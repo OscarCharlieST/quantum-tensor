@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from qtensor.states import *
-from qtensor.operators import *
-from qtensor.simulation.finiteTDVP import *
+import qtensor.states as states 
+import qtensor.operators as ops
+from qtensor.simulation.finiteTDVP import tdvp, right_mpo_contractions
 
 # import os
 # abspath = os.path.abspath(__name__)
@@ -12,18 +12,27 @@ from qtensor.simulation.finiteTDVP import *
 a = np.random.rand(2,3,3) + 1j * np.random.rand(2,3,3)
 b = np.random.rand(2,3,3) + 1j * np.random.rand(2,3,3)
 
-psi = mps([a, a, b, a, b])
+psi = states.mps([a, a, b, a, b])
 psi.right_canonical()
 
-H = tilted_ising(N=5)
+H = ops.tilted_ising(N=5)
 
-total_z_mpo = total_z(5)
-middle_z = single_site_pauli(5, 2, 'z')
-middle_x = single_site_pauli(5, 2, 'x')
+total_z_mpo = ops.total_z(5)
+middle_z = ops.single_site_pauli(5, 2, 'z')
+middle_x = ops.single_site_pauli(5, 2, 'x')
 
-mpo_expect(psi, H)
+ops.mpo_expect(psi, H)
 
-R_con = right_mpo_contractions(psi, H)
+ops.mpo_expect(psi, total_z_mpo)
 
-mpo_expect(psi, total_z_mpo)
-state_hist, L_con, R_con = tdvp(psi, H, 1, 0.01, history=True)
+# state_hist, L_con, R_con = tdvp(psi, H, 1, 0.01, history=True)
+
+ipsi = states.infinite_T_thermofield(5, 8, noise=0.01)
+H_th = ops.thermofield_hamiltonian(H)
+ipsi.right_canonical()
+hist_th, l_th, r_th = tdvp(ipsi, H_th, 1, 0.01, history=True)
+ipsi = hist_th[max(hist_th.keys())]
+ipsi.right_canonical()
+print(states.partite_entropy(ipsi, 2))
+
+ent = states.partite_entropy(psi, 2)

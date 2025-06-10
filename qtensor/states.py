@@ -292,7 +292,7 @@ def overlap(state_1, state_2):
                  ((1, 2), (3, 1, -1), (3, 2, -2)))
     return np.sqrt(np.trace(L @ R))
 
-def partite_entropy(state, site, entropy='renyi2'):
+def partite_entropy(state, site):
     """
     Compute the 2nd renyi entropy of the state partitioned across site and site+1
     Inputs:
@@ -301,9 +301,10 @@ def partite_entropy(state, site, entropy='renyi2'):
     Returns:
     """
     tool_state = copy.copy(state)
+    print('copied')
     tool_state.centralize(site)
     _, s, _, _ = bond_centre_r(tool_state[site])
-    purity = np.trace(s @ s @ s @ s)
+    purity = np.sum([val**4 for val in s])
     return -np.log(purity)
 
 def infinite_T_thermofield(N, D, noise=0):
