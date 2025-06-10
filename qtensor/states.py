@@ -305,4 +305,15 @@ def partite_entropy(state, site, entropy='renyi2'):
     _, s, _, _ = bond_centre_r(tool_state[site])
     purity = np.trace(s @ s @ s @ s)
     return -np.log(purity)
-    
+
+def infinite_T_thermofield(N, D, noise=0):
+    """
+    Builds an infinite temperature thermofield with N sites and bond dimension D
+    """
+    M = np.zeros((4, D, D))
+    M[:, 0, 0] = np.array([1, 0, 0, 1])
+    Ms = [M for _ in range(N)]
+    if noise:
+        Ms = [M + noise * np.random.rand(4, D, D) for M in Ms]
+    return mps(Ms)
+
