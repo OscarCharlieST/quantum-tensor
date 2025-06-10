@@ -125,3 +125,33 @@ def mpo_expect(state, operator):
         L = contract_left(L, state[i], operator[i])
     Wexpect = ncon((L, R, r), ((1, 2, 3), (1, 2), (3,)))
     return Wexpect
+
+def pauli(i):
+    """
+    Returns the Pauli matrix corresponding to the given string.
+
+    Parameters
+    ----------
+    'i' : str
+        The string representing the Pauli matrix to return. Must be one of 
+        'x', 'y', or 'z'.
+
+    Returns
+    -------
+    (2, 2) complex array
+        The Pauli matrix corresponding to the given string.
+
+    Raises
+    ------
+    ValueError
+        If the input string is not one of 'x', 'y', or 'z'.
+
+    """
+    if i == 'x':
+        return np.array([[0, 1], [1, 0]])
+    elif i == 'y':
+        return np.array([[0, -1j], [1j, 0]])
+    elif i == 'z':
+        return np.array([[1, 0], [0, -1]])
+    else:
+        raise ValueError("Invalid input: must be one of 'x', 'y', or 'z'.")
