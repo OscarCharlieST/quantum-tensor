@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from ncon import ncon
 
-from states import *
-from operators import *
+from qtensor.states import *
+from qtensor.operators import *
 
 
 """ 

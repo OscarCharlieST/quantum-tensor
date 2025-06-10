@@ -1,8 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from states import *
-from operators import *
-from finiteTDVP import *
+from qtensor.states import *
+from qtensor.operators import *
+from qtensor.simulation.finiteTDVP import *
+
+# import os
+# abspath = os.path.abspath(__name__)
+# dname = os.path.dirname(abspath)
+# os.chdir(dname)
 
 a = np.random.rand(2,3,3) + 1j * np.random.rand(2,3,3)
 b = np.random.rand(2,3,3) + 1j * np.random.rand(2,3,3)
@@ -20,5 +25,5 @@ mpo_expect(psi, H)
 
 R_con = right_mpo_contractions(psi, H)
 
-mpo_expect(psi, middle_z)
+mpo_expect(psi, total_z_mpo)
 state_hist, L_con, R_con = tdvp(psi, H, 1, 0.01, history=True)

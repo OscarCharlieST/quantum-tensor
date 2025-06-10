@@ -5,9 +5,6 @@ import scipy.linalg as la
 import numpy as np
 from ncon import ncon
 
-abspath = os.path.abspath(__name__)
-dname = os.path.dirname(abspath)
-os.chdir(dname)
 
 """ 
 Finite TDVP for MPS
