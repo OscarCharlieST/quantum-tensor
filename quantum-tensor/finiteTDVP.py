@@ -7,6 +7,7 @@ from ncon import ncon
 from states import *
 from operators import *
 
+
 """ 
 Finite TDVP for MPS
 
@@ -176,23 +177,3 @@ def tdvp_sweep_l(state, operator, dt, L_con, R_con):
     return state, L_con, R_con
 
 
-a = np.random.rand(2,3,3) + 1j * np.random.rand(2,3,3)
-b = np.random.rand(2,3,3) + 1j * np.random.rand(2,3,3)
-
-psi = mps([a, a, b, a, b])
-psi.right_canonical()
-
-H = tilted_ising(N=5)
-
-total_z_mpo = total_z(5)
-middle_z = single_site_pauli(5, 2, 'z')
-middle_x = single_site_pauli(5, 2, 'x')
-
-mpo_expect(psi, H)
-
-R_con = right_mpo_contractions(psi, H)
-psi, R_con = sweep_test(psi, H, R_con, dt=0.1)
-mpo_expect(psi, total_z_mpo)
-
-mpo_expect(psi, middle_z)
-state_hist, L_con, R_con = tdvp(psi, H, 1, 0.01, history=True)
