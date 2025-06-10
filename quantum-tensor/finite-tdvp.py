@@ -1,0 +1,198 @@
+import copy
+import scipy.linalg as la
+import matplotlib.pyplot as plt
+import numpy as np
+from ncon import ncon
+
+from states import *
+from operators import *
+
+""" 
+Finite TDVP for MPS
+
+References:
+https://arxiv.org/pdf/1901.05824 algorithm 3, 5 
+
+Indexing:
+
+    1                           1             1
+    ¦        2 -- A -- 3        ¦             ¦
+    L -- 3  ,     ¦      , 3 -- W -- 4 , 3 -- R
+    ¦             1             ¦             ¦
+    2                           2             2 
+"""
+
+def tdvp(state, operator, t_f, dt, history=False, verbose=False, **kwargs):
+    print('Initiating TDVP')
+    t = 0
+    R_con = right_mpo_contractions(state, operator)
+    state_history = {}
+    while t<t_f:
+        if history:
+            now_state = copy.copy(state)
+            state_history[t] = now_state        
+        L_con = {min(state.sites)-1: 
+                ncon((state.L.conj().T @ state.L , operator.l), ((-1, -2), (-3,)))}
+        state, L_con, _ = tdvp_sweep_r(state, operator, dt, L_con, R_con)
+        R_con = {max(state.sites)+1: 
+                ncon((state.R @ state.R.conj().T , operator.r), ((-1, -2), (-3,)))}
+        state, _, R_con = tdvp_sweep_l(state, operator, dt, L_con, R_con)
+
+        if verbose:
+            if 'operators' in kwargs:
+                # operators = [list of mpo]
+                # Print expectation values for all operators passed in kwargs['operators']
+                for op in kwargs['operators']:
+                    print(f"t = {t:.3f}, <{op}> = {mpo_expect(state, op)}")
+
+        t += dt
+    print('TDVP finished!')
+    state_history[t] = copy.copy(state)
+    return state_history, L_con, R_con
+
+def right_mpo_contractions(state, operator):
+    """
+    Compute the right contractions of the MPO with respect to the MPS Psi.
+    Needed for intializing the TDVP algorithm.
+    Inputs:
+        state: mps object
+        operator: mpo object
+
+    Outputs:
+        R_con: dictionary of right contractions, indexed by site
+    """
+
+    sites = sorted(state.sites)
+    R = state.R @ state.R.conj().T
+    r = operator.r
+    R_con = {}
+    R_con[max(sites)+1] = ncon((R, r), ((-1, -2), (-3,)))
+    for site in reversed(sites):
+        A = state[site]
+        d, Dl, Dr = A.shape
+        R_right = R_con[site+1]
+        if site not in operator.sites:
+            W = ncon((np.eye(d), np.eye(R_right.shape[2])), ((-1, -2), (-3, -4)))
+        else:
+            W = operator[site]
+        R_con[site] = contract_right(R_right, A, W)
+    return R_con
+
+def tdvp_step_r(state, operator, dt, L_con, R_con):
+    c_site = state.c_site
+    M = state[c_site]
+    d, Dl, Dr = M.shape
+    H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
+                 ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
+    # for a more accurate time evolution, explicitly calculate the exponential of the effective Hamiltonian
+    # H_eff_mat = H_eff.reshape((d*Dl*Dr, d*Dl*Dr))
+    # evolve_mat = la.expm(-1j * (dt/2) * H_eff)
+
+    M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    M_new = M_new / la.norm(M_new)  # normalize the new tensor
+    A_new, C_new = left_orthogonal(M_new)
+    state[c_site] = A_new  # update the centre tensor, now left-orthogonal
+    L_con[c_site] = contract_left(L_con[c_site-1], A_new, operator[c_site])
+    if not c_site == max(state.sites):
+        H_eff_bond = ncon((L_con[c_site], R_con[c_site+1]), ((-1, -3, 1), (-2, -4, 1)))
+        C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
+        C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
+        state[c_site+1] = C_new @ state[c_site+1]  # update the next site tensor
+        state.c_site += 1  # shift the centre to the right
+    else:
+        state.R = C_new @ state.R 
+        state.form = 'left'
+    return state, L_con, R_con # not sure about best implementation for returning things...
+
+def tdvp_step_l(state, operator, dt, L_con, R_con):
+    c_site = state.c_site
+    M = state[c_site]
+    d, Dl, Dr = M.shape
+    H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
+                 ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
+    # for a more accurate time evolution, explicitly calculate the exponential of the effective Hamiltonian
+    # H_eff_mat = H_eff.reshape((d*Dl*Dr, d*Dl*Dr))
+    # evolve_mat = la.expm(-1j * (dt/2) * H_eff)
+    M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    M_new = M_new / la.norm(M_new)  # normalize the new tensor
+    B_new, C_new = right_orthogonal(M_new)
+    state[c_site] = B_new
+    R_con[c_site] = contract_right(R_con[c_site+1], B_new, operator[c_site])
+    if not c_site == min(state.sites):
+        H_eff_bond = ncon((L_con[c_site-1], R_con[c_site]), ((-1, -3, 1), (-2, -4, 1)))
+        C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
+        C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
+        state[c_site-1] = state[c_site-1] @ C_new  # update the previous site tensor
+        state.c_site -= 1  # shift the centre to the left
+    else:
+        state.L = state.L @ C_new
+        state.form = 'right'
+    return state, L_con, R_con # not sure about best implementation for returning things...
+
+
+def tdvp_sweep_r(state, operator, dt, L_con, R_con):
+    """
+    Perform a TDVP sweep to the right.
+    Inputs:
+        state: mps object
+        operator: mpo object
+        dt: time step
+        L_con: left contractions dictionary
+        R_con: right contractions dictionary
+    Outputs:
+        state: updated mps object
+        L_con: updated left contractions dictionary
+        R_con: updated right contractions dictionary
+    """
+    assert state.form == 'right', "MPS needs to be right canonicalized before TDVP sweep."
+    state[state.c_site] = state.L @ state[state.c_site]  # absorb the left environment into the first site tensor
+    state.L = np.eye(state[state.c_site].shape[1])  # reset the left environment to identity
+    state.form = 'centre'  # set the form to centre after absorbing the left environment
+    while state.form == 'centre':
+        state, L_con, R_con = tdvp_step_r(state, operator, dt, L_con, R_con)
+    return state, L_con, R_con
+
+
+def tdvp_sweep_l(state, operator, dt, L_con, R_con):
+    """
+    Perform a TDVP sweep to the left.
+    Inputs:
+        state: mps object
+        operator: mpo object
+        dt: time step
+        L_con: left contractions dictionary
+        R_con: right contractions dictionary
+    Outputs:
+        state: updated mps object
+        L_con: updated left contractions dictionary
+        R_con: updated right contractions dictionary
+    """
+    assert state.form == 'left', "MPS needs to be left canonicalized before sweep left."
+    state[state.c_site] = state[state.c_site] @ state.R  # absorb the right environment into the last site tensor
+    state.R = np.eye(state.R.shape[0])  # reset the right environment to identity
+    state.form = 'centre'  # set the form to centre after absorbing the right environment
+    while state.form == 'centre':
+        state, L_con, R_con = tdvp_step_l(state, operator, dt, L_con, R_con)
+    return state, L_con, R_con
+
+
+a = np.random.rand(2,3,3) + 1j * np.random.rand(2,3,3)
+b = np.random.rand(2,3,3) + 1j * np.random.rand(2,3,3)
+
+psi = mps([a, a, b, a, b])
+psi.right_canonical()
+
+H = tilted_ising(N=5)
+
+total_z_mpo = total_z(5)
+middle_z = single_site_pauli(5, 2, 'z')
+middle_x = single_site_pauli(5, 2, 'x')
+
+mpo_expect(psi, H)
+
+R_con = right_mpo_contractions(psi, H)
+psi, R_con = sweep_test(psi, H, R_con, dt=0.1)
+mpo_expect(psi, total_z_mpo)
+
+mpo_expect(psi, middle_z)
+state_hist, L_con, R_con = tdvp(psi, H, 1, 0.01, history=True)
