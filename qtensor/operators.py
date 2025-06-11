@@ -135,12 +135,39 @@ def total_z(N):
     r = np.array([0, 1])
     return uniform_MPO(W, l, r, N)
 
-def single_site_pauli(N, site, pauli_type='z'):
+def single_site_pauli(site, pauli_type='z'):
     W = np.zeros((2, 2, 1, 1), dtype=np.complex64)
     W[:, :, 0, 0] = pauli(pauli_type)
     l = np.array([1,])
     r = np.array([1,])
-    return mpo([(W, site)], l, r)
+    return mpo([(site, W)], l, r)
+
+def two_site_pauli(site_l, pauli_l='z', pauli_r='z'):
+    W_l = np.zeros((2, 2, 1, 1), dtype=np.complex64)
+    W_r = copy.copy(W)
+    W_l[:, :, 0, 0] = pauli(pauli_l)
+    W_r[:, :, 0, 0] = pauli(pauli_r)
+    l = np.array([1,])
+    r = np.array([1,])
+    return mpo([(site_l, W_l), (site_l+1, W_r)], l, r)
+
+def tilted_ising_local_term(site_l, J=1, h=0.25, g=-0.525):
+    """
+    Default parameters taken from 1702.08894
+    Construct a local (2site) energy term. 
+    Convention is that term takes the 2 site zz term
+    and half of the local term at each end.
+    """
+    x, z = [pauli('x'), pauli('z')]
+    W = np.zeros((2, 2, 3, 3), dtype=np.complex64)
+    W[:, :, 0, 0] = np.eye(2)
+    W[:, :, 2, 2] = np.eye(2)
+    W[:, :, 0, 1] = -J * z
+    W[:, :, 1, 2] = z
+    W[:, :, 0, 2] = 0.5*(h * z + g * x)
+    l = np.array([1, 0, 0])
+    r = np.array([0, 0, 1]) # contract with these left and right of the MPO chain
+    return mpo([(site_l, W), (site_l+1, W)], l, r)
 
 def expect(state, operator):
     """
@@ -166,7 +193,7 @@ def expect(state, operator):
 def local_expect(state, operator):
     working_state = copy.copy(state) # don't change original state
     x_max = max(operator.sites)
-    working_state.centralise(x_max) # so we can contract with identities either side of operator
+    working_state.centralize(x_max) # so we can contract with identities either side of operator
     L = working_state.L.conj().T @ working_state.L # should be id
     R = working_state.R @ working_state.R.conj().T # should be id
     l = operator.l
