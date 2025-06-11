@@ -28,7 +28,7 @@ def tdvp(state, operator, t_f, dt, history=False, verbose=False, **kwargs):
     t = 0
     R_con = right_mpo_contractions(state, operator)
     state_history = {}
-    while t<t_f:
+    while np.abs(t)<np.abs(t_f): # abs in case of imaginary time
         if history:
             now_state = copy.copy(state)
             state_history[t] = now_state        
