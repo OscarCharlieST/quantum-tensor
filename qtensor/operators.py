@@ -136,18 +136,13 @@ def total_z(N):
     return uniform_MPO(W, l, r, N)
 
 def single_site_pauli(N, site, pauli_type='z'):
-    W = np.zeros((2, 2, 2, 2), dtype=np.complex64)
-    W[:, :, 0, 0] = np.eye(2)
-    W[:, :, 1, 1] = np.eye(2)
-    l = np.array([1, 0])
-    r = np.array([1, 0])
-    pauli_mpo = uniform_MPO(W, l, r, N)
-    W_pauli = W.copy()
-    W_pauli[:, :, 0, 1] = pauli(pauli_type)
-    pauli_mpo[site] = W_pauli
-    return pauli_mpo
+    W = np.zeros((2, 2, 1, 1), dtype=np.complex64)
+    W[:, :, 0, 0] = pauli(pauli_type)
+    l = np.array([1,])
+    r = np.array([1,])
+    return mpo([(W, site)], l, r)
 
-def mpo_expect(state, operator):
+def expect(state, operator):
     """
     Compute the expectation value of an operator O with respect to the MPS Psi.
     L and R are the left and right environments, respectively.
@@ -168,7 +163,7 @@ def mpo_expect(state, operator):
     Wexpect = ncon((L, R, r), ((1, 2, 3), (1, 2), (3,)))
     return Wexpect
 
-def local_op_expect(state, operator):
+def local_expect(state, operator):
     working_state = copy.copy(state) # don't change original state
     x_max = max(operator.sites)
     working_state.centralise(x_max) # so we can contract with identities either side of operator
