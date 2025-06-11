@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 from ncon import ncon
 
@@ -164,6 +165,20 @@ def mpo_expect(state, operator):
     L = ncon((L, l), ((-1,-2), (-3,)))
     for i in sorted(state.sites):
         L = contract_left(L, state[i], operator[i])
+    Wexpect = ncon((L, R, r), ((1, 2, 3), (1, 2), (3,)))
+    return Wexpect
+
+def local_op_expect(state, operator):
+    working_state = copy.copy(state) # don't change original state
+    x_max = max(operator.sites)
+    working_state.centralise(x_max) # so we can contract with identities either side of operator
+    L = working_state.L.conj().T @ working_state.L # should be id
+    R = working_state.R @ working_state.R.conj().T # should be id
+    l = operator.l
+    r = operator.r 
+    L = ncon((L, l), ((-1,-2), (-3,)))
+    for i in sorted(operator.sites):
+        L = contract_left(L, working_state[i], operator[i])
     Wexpect = ncon((L, R, r), ((1, 2, 3), (1, 2), (3,)))
     return Wexpect
 
