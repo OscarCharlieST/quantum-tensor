@@ -29,6 +29,13 @@ def tdvp(state, operator, t_f, dt, history=False, verbose=False, **kwargs):
     R_con = right_mpo_contractions(state, operator)
     state_history = {}
     while np.abs(t)<np.abs(t_f): # abs in case of imaginary time
+        if verbose:
+            print(f't: {t:.3f}')
+            if 'operators' in kwargs:
+                # operators = [list of mpo]
+                # Print expectation values for all operators passed in kwargs['operators']
+                for op in kwargs['operators']:
+                    print(f"t = {t:.3f}, <{op}> = {expect(state, op)}")
         if history:
             now_state = copy.copy(state)
             state_history[t] = now_state        
@@ -38,13 +45,6 @@ def tdvp(state, operator, t_f, dt, history=False, verbose=False, **kwargs):
         R_con = {max(state.sites)+1: 
                 ncon((state.R @ state.R.conj().T , operator.r), ((-1, -2), (-3,)))}
         state, _, R_con = tdvp_sweep_l(state, operator, dt, L_con, R_con)
-
-        if verbose:
-            if 'operators' in kwargs:
-                # operators = [list of mpo]
-                # Print expectation values for all operators passed in kwargs['operators']
-                for op in kwargs['operators']:
-                    print(f"t = {t:.3f}, <{op}> = {expect(state, op)}")
 
         t += dt
     print('TDVP finished!')
