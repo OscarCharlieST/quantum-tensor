@@ -144,7 +144,7 @@ def single_site_pauli(site, pauli_type='z'):
 
 def two_site_pauli(site_l, pauli_l='z', pauli_r='z'):
     W_l = np.zeros((2, 2, 1, 1), dtype=np.complex64)
-    W_r = copy.copy(W)
+    W_r = copy.copy(W_l)
     W_l[:, :, 0, 0] = pauli(pauli_l)
     W_r[:, :, 0, 0] = pauli(pauli_r)
     l = np.array([1,])

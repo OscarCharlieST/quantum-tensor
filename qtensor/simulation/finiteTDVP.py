@@ -44,7 +44,7 @@ def tdvp(state, operator, t_f, dt, history=False, verbose=False, **kwargs):
                 # operators = [list of mpo]
                 # Print expectation values for all operators passed in kwargs['operators']
                 for op in kwargs['operators']:
-                    print(f"t = {t:.3f}, <{op}> = {mpo_expect(state, op)}")
+                    print(f"t = {t:.3f}, <{op}> = {expect(state, op)}")
 
         t += dt
     print('TDVP finished!')
