@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import qtensor.states as states 
 import qtensor.operators as ops
 from qtensor.simulation.finiteTDVP import tdvp, right_mpo_contractions
@@ -13,6 +14,35 @@ def infinite_T_thermofield(N, D, noise=0):
     if noise:
         Ms = [M + noise * np.random.rand(4, D, D) for M in Ms]
     return states.mps(Ms)
+
+def th_onesite(A, site):
+    """
+    Takes a single-site spin 1/2 operator (as amatrix) and returns the thermofield mpo reprsentation 
+    """
+    W = np.zeros((4, 4, 1, 1))
+    W[:, :, 0, 0] = np.kron(A, np.eye(2)) + np.kron(np.eye(2), A)
+    return ops.mpo([site, W], np.array([1,]), np.array([1,]))
+
+def th_twosite(B, site):
+    l_site = min(B.sites)
+    r_site = l_site + 1
+    W_l = B[l_site]
+    W_l_2 = W_l[:, :, 0, 1]
+    W_l_1 = W_l[:, :, 0, 2]
+    W_r = B[r_site]
+    W_r_2 = W_r[:, :, 1, 2]
+    W_th_l = np.zeros((4, 4, 1, a))
+    W_th_r = np.zeros((4, 4, a, 1))
+    W_th_l[:, :, 0, 0] = np.kron(W_l_2, np.eye(2))
+    W_th_r[:, :, 0, 0] = np.kron(W_r_2, np.eye(2))
+    W_th_l[:, :, 0, 1] = np.kron(np.eye(2), W_l_2)
+    W_th_r[:, :, 1, 0] = np.kron(np.eye(2), W_r_2)
+    W_th_l[:, :, 0, 2] = np.kron(W_l_2, np.eye(2))
+    W_th_r[:, :, 2, 0] = np.kron(W_r_2, np.eye(2))
+
+    return ops.mpo([site, W], np.array([1,]), np.array([1,]))
+    
+
 
 def thermofield_hamiltonian(H):
     """
@@ -55,11 +85,12 @@ def thermofield_hamiltonian(H):
     r = np.array([0, 0, 0, 1])
     return ops.mpo(H_th, l, r)
 
-def finite_T_thermofield(beta, N, D, H, noise=0.0, steps=100):
+def finite_T_thermofield(beta, N, D, H, noise=0.0, steps=100, plot=True):
     state = infinite_T_thermofield(N, D, noise)
     state.right_canonical()
-    print("MPS shape:", state[0].shape)
-    print("MPO shape:", H[0].shape)
-    state_hist, _, _ = tdvp(state, H, 1j*beta*1/4, 1j*(beta*1/4)/steps, history=True, verbose=True)
+    state_hist, energy = tdvp(state, H, 1j*beta*1/4, 1j*(beta*1/4)/steps, history=True, operators=[H])
+    if plot:
+        fig, ax = plt.subplots(1,1)
+        ax.plot(np.abs(energy.keys()), np.abs(energy.values()))
     return state
     
