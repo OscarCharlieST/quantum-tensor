@@ -58,6 +58,8 @@ def thermofield_hamiltonian(H):
 def finite_T_thermofield(beta, N, D, H, noise=0.0, steps=100):
     state = infinite_T_thermofield(N, D, noise)
     state.right_canonical()
-    state_hist, _, _ = tdvp(state, H, beta*1/4, (beta*1/4)/steps, history=True, verbose=True)
+    print("MPS shape:", state[0].shape)
+    print("MPO shape:", H[0].shape)
+    state_hist, _, _ = tdvp(state, H, 1j*beta*1/4, 1j*(beta*1/4)/steps, history=True, verbose=True)
     return state
     
