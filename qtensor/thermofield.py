@@ -78,13 +78,16 @@ def finite_T_thermofield(beta, N, D, H, steps=100, plot=True):
         print("Energy at finite temperature:", energy[-1])
     return state, time, energy
 
-def near_thermal(H, beta_profile):
-    assert len(H.sites) == len(beta_profile), "temp profile incorrect length"
-    H_new = {}
-    for site, beta in zip(H.sites, beta_profile):
+def near_thermal(H, profile, D, steps=100):
+    assert len(H.sites) == len(profile), "temp profile incorrect length"
+    H_new = []
+    for site, beta in zip(H.sites, profile):
         W = H[site]
         W[:, :, 1:, 1:] = W[:, :, 1:, 1:] * np.sqrt(beta) # twosite terms get a factor from each site
         W[:, :, -1, -1] = W[:, :, -1, -1] * np.sqrt(beta) # onesite term gets both sqrts at once
-        H_new[site] = W
-    return ops.mpo(H_new, H.l, H.r)
-    
+        H_new.append((site, W))
+    H_eff = ops.mpo(H_new, H.l, H.r)
+    H_eff_th = thermofield_hamiltonian(H_eff)
+    state, _, _ = finite_T_thermofield(1, len(profile), D, H_eff_th, steps=steps,
+                                       plot=False)
+    return state
