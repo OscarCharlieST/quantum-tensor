@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-`
 import os
 import copy
+import qtensor.operators as ops
 import scipy.linalg as la
 import numpy as np
 from ncon import ncon
@@ -317,4 +318,3 @@ def infinite_T_thermofield(N, D, noise=0):
     if noise:
         Ms = [M + noise * np.random.rand(4, D, D) for M in Ms]
     return mps(Ms)
-

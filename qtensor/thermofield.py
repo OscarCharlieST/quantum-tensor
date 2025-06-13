@@ -67,9 +67,9 @@ def thermofield_hamiltonian(H):
 def finite_T_thermofield(beta, N, D, H, noise=0.0, steps=100, plot=True):
     state = infinite_T_thermofield(N, D, noise)
     state.right_canonical()
-    state_hist, energy = tdvp(state, H, 1j*beta*1/4, 1j*(beta*1/4)/steps, history=True, operators=[H])
+    state_hist, energy = tdvp(state, H, -1j*beta*1/4, -1j*(beta*1/4)/steps, history=True, operators=[H])
     if plot:
         fig, ax = plt.subplots(1,1)
-        ax.plot(np.abs(energy.keys()), np.abs(energy.values()))
+        ax.plot(np.abs(list(energy.keys())), np.abs(list(energy.values())))
     return state
     

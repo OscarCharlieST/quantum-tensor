@@ -23,9 +23,16 @@ Indexing:
     2                           2             2 
 """
 
-def tdvp(state, operator, t_f, dt, history=False, verbose=False, **kwargs):
+def tdvp(state, operator, t_f, steps, history=False, verbose=False, **kwargs):
+    """
+    Perform tdvp on state under a hamiltonian operator
+    kwarg options:
+    operators = [list of mpo objects]
+        keeps track of the value of each operator during evolution
+    """
     print('Initiating TDVP')
     t = 0
+    dt = t_f/steps
     R_con = right_mpo_contractions(state, operator)
     state_history = {}
     expectations = {}
@@ -50,7 +57,8 @@ def tdvp(state, operator, t_f, dt, history=False, verbose=False, **kwargs):
         t += dt
     print('TDVP finished!')
     state_history[t] = copy.copy(state)
-    expectations[t] = [expect(state, op) for op in kwargs['operators']]
+    if 'operators' in kwargs:
+        expectations[t] = [expect(state, op) for op in kwargs['operators']]
     return state_history, expectations
 
 def right_mpo_contractions(state, operator):
@@ -178,4 +186,12 @@ def tdvp_sweep_l(state, operator, dt, L_con, R_con):
         state, L_con, R_con = tdvp_step_l(state, operator, dt, L_con, R_con)
     return state, L_con, R_con
 
-
+def gs_evolve(psi, H, t_f=1000, steps=100):
+    """
+    Given an intial state and a hamiltonian, approximate the ground state
+    by imaginary time tdvp
+    """
+    print("Intial energy:", expect(psi, H))
+    _, _ = tdvp(psi, H, -1j*t_f, steps)
+    print("Final energy:", expect(psi, H))
+    return psi
