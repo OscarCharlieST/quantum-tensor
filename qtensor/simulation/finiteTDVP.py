@@ -26,9 +26,18 @@ Indexing:
 def tdvp(state, operator, t_f, steps, history=False, verbose=False, **kwargs):
     """
     Perform tdvp on state under a hamiltonian operator
-    kwarg options:
-    operators = [list of mpo objects]
-        keeps track of the value of each operator during evolution
+    Inputs:
+        state: mps object
+        operator: mpo object
+        t_f: complex float
+        history: bool, default is False
+        verbose: bool, default is False
+        **operators: list of mpo objects
+    Returns:
+        state_history: dict
+            {time: state} at each point in the evolution
+        expectations: dict
+            {time: [expectation of each operator provided]}
     """
     print('Initiating TDVP')
     # t = 0
