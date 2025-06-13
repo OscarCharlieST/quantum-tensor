@@ -151,23 +151,22 @@ def two_site_pauli(site_l, pauli_l='z', pauli_r='z'):
     r = np.array([1,])
     return mpo([(site_l, W_l), (site_l+1, W_r)], l, r)
 
-def tilted_ising_local_term(site_l, J=1, h=0.25, g=-0.525):
+def extensive_twosite_local_term(H, site):
     """
-    Default parameters taken from 1702.08894
-    Construct a local (2site) energy term. 
-    Convention is that term takes the 2 site zz term
+    Construct a local (2site) energy term between (site, site+1)
+    Convention is that term takes the full 2-site term
     and half of the local term at each end.
     """
-    x, z = [pauli('x'), pauli('z')]
-    W = np.zeros((2, 2, 3, 3), dtype=np.complex64)
-    W[:, :, 0, 0] = np.eye(2)
-    W[:, :, 2, 2] = np.eye(2)
-    W[:, :, 0, 1] = -J * z
-    W[:, :, 1, 2] = z
-    W[:, :, 0, 2] = 0.5*(h * z + g * x)
-    l = np.array([1, 0, 0])
-    r = np.array([0, 0, 1]) # contract with these left and right of the MPO chain
-    return mpo([(site_l, W), (site_l+1, W)], l, r)
+    Wl = H[site]
+    Wr = H[site+1]
+    i_one = Wl.shape[-1] - 1 # works with normal or thermofield
+    Wl[:, :, 0, i_one] = Wl[:, :, 0, i_one] / 2 # only need half the single site term at each end
+    Wr[:, :, 0, i_one] = Wr[:, :, 0, i_one] / 2
+    l = np.zeros(Wl.shape[-2])
+    l[0] = 1
+    r = np.zeros(Wr.shape[-1]) # contract with these left and right of the MPO chain
+    r[-1] = 1
+    return mpo([(site, Wl), (site+1, Wr)], l, r)
 
 def expect(state, operator):
     """
