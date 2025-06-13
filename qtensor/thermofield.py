@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import qtensor.states as states 
 import qtensor.operators as ops
-from qtensor.simulation.finiteTDVP import tdvp, right_mpo_contractions
+from qtensor.simulation.finiteTDVP import tdvp, right_mpo_contractions, inf_T_thermofield_variational
 
 def infinite_T_thermofield(N, D, noise=0):
     """
@@ -14,6 +14,7 @@ def infinite_T_thermofield(N, D, noise=0):
     if noise:
         Ms = [M + noise * np.random.rand(4, D, D) for M in Ms]
     return states.mps(Ms)
+
 
 def th_onesite(A, site):
     """
@@ -64,12 +65,17 @@ def thermofield_hamiltonian(H):
     r = np.array([0, 0, 0, 1])
     return ops.mpo(H_th, l, r)
 
-def finite_T_thermofield(beta, N, D, H, noise=0.0, steps=100, plot=True):
-    state = infinite_T_thermofield(N, D, noise)
-    state.right_canonical()
-    state_hist, energy = tdvp(state, H, -1j*beta*1/4, -1j*(beta*1/4)/steps, history=True, operators=[H])
+
+
+def finite_T_thermofield(beta, N, D, H, steps=100, plot=True):
+    state = inf_T_thermofield_variational(N, D)
+    _, expectations = tdvp(state, H, -1j*beta*1/4, steps, history=True, operators=[H])
+    time = np.abs(list(expectations.keys()))*4
+    energy = np.real([opexp[0] for opexp in expectations.values()])/2
     if plot:
         fig, ax = plt.subplots(1,1)
-        ax.plot(np.abs(list(energy.keys())), np.abs(list(energy.values())))
-    return state
-    
+        ax.plot(time, energy)
+        ax.set_xlabel(r"$\beta$")
+        ax.set_ylabel(r"$E$")
+        print("Energy at finite temperature:", energy[-1])
+    return state, time, energy
