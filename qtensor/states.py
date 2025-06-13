@@ -30,7 +30,7 @@ class mps:
         elif type(Ms) == list:
             self.tensors = {i: M for i, M in enumerate(Ms)}
         else:
-            raise ValueError("Ms must be a list of tensors or a dictionary of tensors.")
+            raise ValueError("Ms must be a list of tensors or a dictionary of sites:tensor.")
         self.sites = self.tensors.keys()
         self.L = kwargs['L'] if 'L' in kwargs else np.eye(Ms[0].shape[1])
         self.R = kwargs['R'] if 'R' in kwargs else np.eye(Ms[-1].shape[2])
@@ -308,13 +308,12 @@ def partite_entropy(state, site):
     purity = np.sum([val**4 for val in s])
     return -np.log(purity)
 
-def infinite_T_thermofield(N, D, noise=0):
-    """
-    Builds an infinite temperature thermofield with N sites and bond dimension D
-    """
-    M = np.zeros((4, D, D))
-    M[:, 0, 0] = np.array([1, 0, 0, 1])
-    Ms = [M for _ in range(N)]
-    if noise:
-        Ms = [M + noise * np.random.rand(4, D, D) for M in Ms]
-    return mps(Ms)
+def random_mps(N, d, D, seed=0):
+    np.random.seed(seed)
+    As = []
+    for i in range(N):
+        A = np.random.rand(d, D, D) + 1j*np.random.rand(d, D, D)
+        As.append(A)
+    state = mps(As)
+    state.right_canonical()
+    return state
