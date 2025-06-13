@@ -302,7 +302,6 @@ def partite_entropy(state, site):
     Returns:
     """
     tool_state = copy.copy(state)
-    print('copied')
     tool_state.centralize(site)
     _, s, _, _ = bond_centre_r(tool_state[site])
     purity = np.sum([val**4 for val in s])
