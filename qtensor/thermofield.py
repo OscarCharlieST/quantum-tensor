@@ -65,8 +65,6 @@ def thermofield_hamiltonian(H):
     r = np.array([0, 0, 0, 1])
     return ops.mpo(H_th, l, r)
 
-
-
 def finite_T_thermofield(beta, N, D, H, steps=100, plot=True):
     state = inf_T_thermofield_variational(N, D)
     _, expectations = tdvp(state, H, -1j*beta*1/4, steps, history=True, operators=[H])
@@ -79,3 +77,14 @@ def finite_T_thermofield(beta, N, D, H, steps=100, plot=True):
         ax.set_ylabel(r"$E$")
         print("Energy at finite temperature:", energy[-1])
     return state, time, energy
+
+def near_thermal(H, beta_profile):
+    assert len(H.sites) == len(beta_profile), "temp profile incorrect length"
+    H_new = {}
+    for site, beta in zip(H.sites, beta_profile):
+        W = H[site]
+        W[:, :, 1:, 1:] = W[:, :, 1:, 1:] * np.sqrt(beta) # twosite terms get a factor from each site
+        W[:, :, -1, -1] = W[:, :, -1, -1] * np.sqrt(beta) # onesite term gets both sqrts at once
+        H_new[site] = W
+    return ops.mpo(H_new, H.l, H.r)
+    
