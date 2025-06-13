@@ -87,7 +87,6 @@ def near_thermal(H, profile, D, steps=100):
         W[:, :, -1, -1] = W[:, :, -1, -1] * np.sqrt(beta) # onesite term gets both sqrts at once
         H_new.append((site, W))
     H_eff = ops.mpo(H_new, H.l, H.r)
-    H_eff_th = thermofield_hamiltonian(H_eff)
-    state, _, _ = finite_T_thermofield(1, len(profile), D, H_eff_th, steps=steps,
+    state, _, _ = finite_T_thermofield(1, len(profile), D, H_eff, steps=steps,
                                        plot=False)
     return state
