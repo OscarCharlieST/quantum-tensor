@@ -168,6 +168,17 @@ def extensive_twosite_local_term(H, site):
     r[-1] = 1
     return mpo([(site, Wl), (site+1, Wr)], l, r)
 
+def extensive_as_terms(H):
+    """
+    Takes extensive local mpo, returns list of local summands
+    """
+    loc_ops = []
+    for site in sorted(H.sites):
+        if not site == max(H.sites):
+            loc_ops.append(extensive_twosite_local_term(H, site))
+        else:
+            return loc_ops
+
 def expect(state, operator):
     """
     Compute the expectation value of an operator O with respect to the MPS Psi.
@@ -232,3 +243,4 @@ def pauli(i):
         return np.array([[1, 0], [0, -1]])
     else:
         raise ValueError("Invalid input: must be one of 'x', 'y', or 'z'.")
+    
