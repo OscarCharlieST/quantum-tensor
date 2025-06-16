@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import copy
 import qtensor.states as states 
 import qtensor.operators as ops
 from qtensor.simulation.finiteTDVP import tdvp, right_mpo_contractions, inf_T_thermofield_variational
@@ -78,13 +79,13 @@ def finite_T_thermofield(beta, N, D, H, steps=100, plot=True):
         print("Energy at finite temperature:", energy[-1])
     return state, time, energy
 
-def near_thermal(H, profile, D, steps=100):
+def near_thermal(H, profile, D, steps=200):
     assert len(H.sites) == len(profile), "temp profile incorrect length"
     H_new = []
     for site, beta in zip(H.sites, profile):
-        W = H[site]
-        W[:, :, 1:, 1:] = W[:, :, 1:, 1:] * np.sqrt(beta) # twosite terms get a factor from each site
-        W[:, :, -1, -1] = W[:, :, -1, -1] * np.sqrt(beta) # onesite term gets both sqrts at once
+        W = copy.copy(H[site]) # don't actually edit the hamiltonian
+        W[:, :, :-1, 1:] = W[:, :, :-1, 1:] * np.sqrt(beta) # twosite terms get a factor from each site
+        W[:, :, 0, -1] = W[:, :, 0, -1] * np.sqrt(beta) # onesite term gets both sqrts at once
         H_new.append((site, W))
     H_eff = ops.mpo(H_new, H.l, H.r)
     state, _, _ = finite_T_thermofield(1, len(profile), D, H_eff, steps=steps,
