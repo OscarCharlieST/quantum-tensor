@@ -49,7 +49,16 @@ class mps:
 
     def __copy__(self):
         new_instance = mps(copy.copy(self.tensors), L=copy.copy(self.L), R=copy.copy(self.R))
-        new_instance.form = self.form
+        new_instance.form = copy.copy(self.form)
+        new_instance.c_site = copy.copy(self.c_site)
+        return new_instance
+    
+    def __deepcopy__(self, memo):
+        new_instance = mps(copy.deepcopy(self.tensors, memo), 
+                           L=copy.deepcopy(self.L, memo), 
+                           R=copy.deepcopy(self.R, memo))
+        new_instance.form = copy.copy(self.form)
+        new_instance.c_site = copy.copy(self.c_site)
         return new_instance
 
     def __len__(self):

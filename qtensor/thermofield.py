@@ -70,14 +70,14 @@ def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True
     if not initial_state:    
         state = inf_T_thermofield_variational(N, D)
     else:
-        state = initial_state
+        state = copy.deepcopy(initial_state)
         # initial state must be infinite temperature
         pass
     _, expectations = tdvp(state, H, -1j*beta*1/4, steps, history=True, operators=[H])
     time = np.abs(list(expectations.keys()))*4
     energy = np.real([opexp[0] for opexp in expectations.values()])/2
     if plot:
-        fig, ax = plt.subplots(1,1)
+        _, ax = plt.subplots(1,1)
         ax.plot(time, energy)
         ax.set_xlabel(r"$\beta$")
         ax.set_ylabel(r"$E$")
