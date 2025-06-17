@@ -23,7 +23,9 @@ Indexing:
     2                           2             2 
 """
 
-def tdvp(state, operator, t_f, steps, history=False, verbose=False, **kwargs):
+def tdvp(state, operator, t_f, steps, method,
+         history=False, verbose=False, 
+         **kwargs):
     """
     Perform tdvp on state under a hamiltonian operator
     Inputs:
@@ -32,6 +34,7 @@ def tdvp(state, operator, t_f, steps, history=False, verbose=False, **kwargs):
         t_f: complex float
         history: bool, default is False
         verbose: bool, default is False
+        method: callable, default is method_fast
         **operators: list of mpo objects
     Returns:
         state_history: dict
@@ -59,10 +62,10 @@ def tdvp(state, operator, t_f, steps, history=False, verbose=False, **kwargs):
             
         L_con = {min(state.sites)-1: 
                 ncon((state.L.conj().T @ state.L , operator.l), ((-1, -2), (-3,)))}
-        state, L_con, _ = tdvp_sweep_r(state, operator, dt, L_con, R_con)
+        state, L_con, _ = tdvp_sweep_r(state, operator, dt, L_con, R_con, method)
         R_con = {max(state.sites)+1: 
                 ncon((state.R @ state.R.conj().T , operator.r), ((-1, -2), (-3,)))}
-        state, _, R_con = tdvp_sweep_l(state, operator, dt, L_con, R_con)
+        state, _, R_con = tdvp_sweep_l(state, operator, dt, L_con, R_con, method)
 
         # t += dt
     print('TDVP finished!')
@@ -99,24 +102,27 @@ def right_mpo_contractions(state, operator):
         R_con[site] = contract_right(R_right, A, W)
     return R_con
 
-def tdvp_step_r(state, operator, dt, L_con, R_con):
+def tdvp_step_r(state, operator, dt, L_con, R_con, method):
     c_site = state.c_site
     M = state[c_site]
     d, Dl, Dr = M.shape
+    
     H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
                  ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
-    # for a more accurate time evolution, explicitly calculate the exponential of the effective Hamiltonian
-    # H_eff_mat = H_eff.reshape((d*Dl*Dr, d*Dl*Dr))
-    # evolve_mat = la.expm(-1j * (dt/2) * H_eff)
-
-    M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    # M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    exp_H_eff = method(H_eff, dt)
+    M_new = ncon((M, exp_H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
     A_new, C_new = left_orthogonal(M_new)
     state[c_site] = A_new  # update the centre tensor, now left-orthogonal
     L_con[c_site] = contract_left(L_con[c_site-1], A_new, operator[c_site])
     if not c_site == max(state.sites):
         H_eff_bond = ncon((L_con[c_site], R_con[c_site+1]), ((-1, -3, 1), (-2, -4, 1)))
-        C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
+        # C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
+        exp_H_eff_bond = method(H_eff_bond, -dt)
+        C_new = ncon((C_new, exp_H_eff_bond), ((1, 2), (1, 2, -1, -2)))
+        
         C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
         state[c_site+1] = C_new @ state[c_site+1]  # update the next site tensor
         state.c_site += 1  # shift the centre to the right
@@ -125,23 +131,27 @@ def tdvp_step_r(state, operator, dt, L_con, R_con):
         state.form = 'left'
     return state, L_con, R_con # not sure about best implementation for returning things...
 
-def tdvp_step_l(state, operator, dt, L_con, R_con):
+def tdvp_step_l(state, operator, dt, L_con, R_con, method):
     c_site = state.c_site
     M = state[c_site]
     d, Dl, Dr = M.shape
     H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
                  ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
-    # for a more accurate time evolution, explicitly calculate the exponential of the effective Hamiltonian
-    # H_eff_mat = H_eff.reshape((d*Dl*Dr, d*Dl*Dr))
-    # evolve_mat = la.expm(-1j * (dt/2) * H_eff)
-    M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    # M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    exp_H_eff = method(H_eff, dt)
+    M_new = ncon((M, exp_H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
     B_new, C_new = right_orthogonal(M_new)
     state[c_site] = B_new
     R_con[c_site] = contract_right(R_con[c_site+1], B_new, operator[c_site])
     if not c_site == min(state.sites):
         H_eff_bond = ncon((L_con[c_site-1], R_con[c_site]), ((-1, -3, 1), (-2, -4, 1)))
-        C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
+        # C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
+        exp_H_eff_bond = method(H_eff_bond, -dt)
+        C_new = ncon((C_new, exp_H_eff_bond), ((1, 2), (1, 2, -1, -2)))
+        
+
         C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
         state[c_site-1] = state[c_site-1] @ C_new  # update the previous site tensor
         state.c_site -= 1  # shift the centre to the left
@@ -151,7 +161,7 @@ def tdvp_step_l(state, operator, dt, L_con, R_con):
     return state, L_con, R_con # not sure about best implementation for returning things...
 
 
-def tdvp_sweep_r(state, operator, dt, L_con, R_con):
+def tdvp_sweep_r(state, operator, dt, L_con, R_con, method):
     """
     Perform a TDVP sweep to the right.
     Inputs:
@@ -170,11 +180,11 @@ def tdvp_sweep_r(state, operator, dt, L_con, R_con):
     state.L = np.eye(state[state.c_site].shape[1])  # reset the left environment to identity
     state.form = 'centre'  # set the form to centre after absorbing the left environment
     while state.form == 'centre':
-        state, L_con, R_con = tdvp_step_r(state, operator, dt, L_con, R_con)
+        state, L_con, R_con = tdvp_step_r(state, operator, dt, L_con, R_con, method)
     return state, L_con, R_con
 
 
-def tdvp_sweep_l(state, operator, dt, L_con, R_con):
+def tdvp_sweep_l(state, operator, dt, L_con, R_con, method):
     """
     Perform a TDVP sweep to the left.
     Inputs:
@@ -193,7 +203,7 @@ def tdvp_sweep_l(state, operator, dt, L_con, R_con):
     state.R = np.eye(state.R.shape[0])  # reset the right environment to identity
     state.form = 'centre'  # set the form to centre after absorbing the right environment
     while state.form == 'centre':
-        state, L_con, R_con = tdvp_step_l(state, operator, dt, L_con, R_con)
+        state, L_con, R_con = tdvp_step_l(state, operator, dt, L_con, R_con, method)
     return state, L_con, R_con
 
 def gs_evolve(psi, H, t_f=1000, steps=100):
@@ -202,7 +212,7 @@ def gs_evolve(psi, H, t_f=1000, steps=100):
     by imaginary time tdvp
     """
     print("Intial energy:", expect(psi, H))
-    _, _ = tdvp(psi, H, -1j*t_f, steps)
+    _, _ = tdvp(psi, H, -1j*t_f, steps, method_fast)
     print("Final energy:", expect(psi, H))
     return psi
 
@@ -223,3 +233,44 @@ def inf_T_thermofield_variational(N, D, state=None):
         state = random_mps(N, 4, D)
     state = gs_evolve(state, H_gs)
     return state
+
+def method_exact(H_eff, dt):
+    """
+    Compute the matrix exponential via exact diagonalisation
+    """
+    full_dim = np.prod(H_eff.shape)
+    sq_dim = int(np.sqrt(full_dim))
+    H_eff_mat = H_eff.reshape(sq_dim, sq_dim)
+    mat_exp = la.expm(-0.5*1j*dt*H_eff_mat)
+    exp_H_eff = mat_exp.reshape(H_eff.shape)
+    return exp_H_eff
+
+def method_fast(H_eff, dt):
+    """
+    First order approximation to matrix exponential
+    """
+    # n_legs = len(H_eff.shape)
+    # n_map = int(n_legs/2)
+
+    # #build identity for each pair of legs
+    # ids = [np.eye(dim) for dim in H_eff.shape[:n_map]]
+    # e = ids[0]
+    # for e in ids[0:]:
+    #     id_full = np.kron(id_full, e)
+
+    # # Permute indices
+    # perm1 = np.array([2*i for i in range(n_map)])
+    # perm = np.concatenate([perm1, perm1+1])
+    # id_full = np.transpose(id_full, perm)
+
+    full_dim = np.prod(H_eff.shape)
+    sq_dim = int(np.sqrt(full_dim))
+    id_mat = np.eye(sq_dim)
+    id_full = id_mat.reshape(H_eff.shape)*(1+0j)
+
+    assert id_full.shape==H_eff.shape, 'identity built wrong'
+
+    return id_full - 0.5*1j*dt*H_eff
+
+
+"CHANGE FOR LOLS"
