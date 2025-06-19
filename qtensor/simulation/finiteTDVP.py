@@ -140,6 +140,7 @@ def tdvp_step_l(state, operator, dt, L_con, R_con, method):
     # M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
     exp_H_eff = method(H_eff, dt)
     M_new = ncon((M, exp_H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    # M_new = method(M_new, H_eff_bond, dt)
 
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
     B_new, C_new = right_orthogonal(M_new)
@@ -150,7 +151,7 @@ def tdvp_step_l(state, operator, dt, L_con, R_con, method):
         # C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
         exp_H_eff_bond = method(H_eff_bond, -dt)
         C_new = ncon((C_new, exp_H_eff_bond), ((1, 2), (1, 2, -1, -2)))
-        
+        # C_new = method(C_new, H_eff_bond, -dt)
 
         C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
         state[c_site-1] = state[c_site-1] @ C_new  # update the previous site tensor
@@ -273,4 +274,32 @@ def method_fast(H_eff, dt):
     return id_full - 0.5*1j*dt*H_eff
 
 
-"CHANGE FOR LOLS"
+
+def method_lanczos(tensor, H_eff, dt, epsilon=1e-8):
+    """
+    Lanczos method for computing matrix exponential
+    """
+    full_dim = np.prod(H_eff.shape)
+    sq_dim = int(np.sqrt(full_dim))
+    H_eff_mat = H_eff.reshape(sq_dim, sq_dim)
+    tensor_vec = tensor.reshape(sq_dim, 1)
+    # build the lanczos vectors
+    v0 = tensor_vec / la.norm(tensor_vec)
+    vm = [v0]
+    converged = False
+    while not converged:
+        v = vm[-1]
+        w = H_eff_mat @ v
+        w = w - sum([np.vdot(v_i, w) * v_i for v_i in vm])
+        norm_w = la.norm(w)
+        if norm_w < epsilon:
+            converged = True
+            break
+        vm.append(w / la.norm(w))
+    Vm = np.column_stack(vm)
+    H_eff_lanczos = Vm.conj().T @ H_eff_mat @ V_m
+    # compute the exponential exactly
+    mat_exp = la.expm(-0.5*1j*dt*H_eff_lanczos)
+    updated_tensor = (Vm @ mat_exp)[0, :]
+    updated_tensor = updated_tensor.reshape(tensor.shape)
+    return updated_tensor
