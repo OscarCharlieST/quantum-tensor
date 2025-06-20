@@ -213,7 +213,7 @@ def tdvp_sweep_l(state, operator, dt, L_con, R_con, method):
         state, L_con, R_con = tdvp_step_l(state, operator, dt, L_con, R_con, method)
     return state, L_con, R_con
 
-def gs_evolve(psi, H, t_f=1000, steps=100):
+def gs_evolve(psi, H, t_f=100, steps=100):
     """
     Given an intial state and a hamiltonian, approximate the ground state
     by imaginary time tdvp
