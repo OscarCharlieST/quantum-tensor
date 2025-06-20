@@ -3,6 +3,10 @@ import scipy.linalg as la
 import matplotlib.pyplot as plt
 import numpy as np
 from ncon import ncon
+from numba import jit
+from numba import njit
+from numba.typed import List
+import time
 
 from qtensor.states import *
 from qtensor.operators import *
@@ -110,9 +114,10 @@ def tdvp_step_r(state, operator, dt, L_con, R_con, method):
     H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
                  ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
     # M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
-    exp_H_eff = method(H_eff, dt)
-    M_new = ncon((M, exp_H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
-    
+    # exp_H_eff = method(H_eff, dt)
+    # M_new = ncon((M, exp_H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    M_new = method(M, H_eff, dt)
+
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
     A_new, C_new = left_orthogonal(M_new)
     state[c_site] = A_new  # update the centre tensor, now left-orthogonal
@@ -120,9 +125,10 @@ def tdvp_step_r(state, operator, dt, L_con, R_con, method):
     if not c_site == max(state.sites):
         H_eff_bond = ncon((L_con[c_site], R_con[c_site+1]), ((-1, -3, 1), (-2, -4, 1)))
         # C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
-        exp_H_eff_bond = method(H_eff_bond, -dt)
-        C_new = ncon((C_new, exp_H_eff_bond), ((1, 2), (1, 2, -1, -2)))
-        
+        # exp_H_eff_bond = method(H_eff_bond, -dt)
+        # C_new = ncon((C_new, exp_H_eff_bond), ((1, 2), (1, 2, -1, -2)))
+        C_new = method(C_new, H_eff_bond, -dt)
+
         C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
         state[c_site+1] = C_new @ state[c_site+1]  # update the next site tensor
         state.c_site += 1  # shift the centre to the right
@@ -138,9 +144,9 @@ def tdvp_step_l(state, operator, dt, L_con, R_con, method):
     H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
                  ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
     # M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
-    exp_H_eff = method(H_eff, dt)
-    M_new = ncon((M, exp_H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
-    # M_new = method(M_new, H_eff_bond, dt)
+    # exp_H_eff = method(H_eff, dt)
+    # M_new = ncon((M, exp_H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    M_new = method(M, H_eff, dt)
 
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
     B_new, C_new = right_orthogonal(M_new)
@@ -149,9 +155,9 @@ def tdvp_step_l(state, operator, dt, L_con, R_con, method):
     if not c_site == min(state.sites):
         H_eff_bond = ncon((L_con[c_site-1], R_con[c_site]), ((-1, -3, 1), (-2, -4, 1)))
         # C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
-        exp_H_eff_bond = method(H_eff_bond, -dt)
-        C_new = ncon((C_new, exp_H_eff_bond), ((1, 2), (1, 2, -1, -2)))
-        # C_new = method(C_new, H_eff_bond, -dt)
+        # exp_H_eff_bond = method(H_eff_bond, -dt)
+        # C_new = ncon((C_new, exp_H_eff_bond), ((1, 2), (1, 2, -1, -2)))
+        C_new = method(C_new, H_eff_bond, -dt)
 
         C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
         state[c_site-1] = state[c_site-1] @ C_new  # update the previous site tensor
@@ -235,7 +241,7 @@ def inf_T_thermofield_variational(N, D, state=None):
     state = gs_evolve(state, H_gs)
     return state
 
-def method_exact(H_eff, dt):
+def method_exact(tensor, H_eff, dt, **kwargs):
     """
     Compute the matrix exponential via exact diagonalisation
     """
@@ -244,38 +250,37 @@ def method_exact(H_eff, dt):
     H_eff_mat = H_eff.reshape(sq_dim, sq_dim)
     mat_exp = la.expm(-0.5*1j*dt*H_eff_mat)
     exp_H_eff = mat_exp.reshape(H_eff.shape)
-    return exp_H_eff
+    if len(tensor.shape) == 3:
+        return ncon((tensor, exp_H_eff),
+                    ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    elif len(tensor.shape) == 2:
+        return ncon((tensor, exp_H_eff),
+                    ((1, 2), (1, 2, -1, -2)))
+    else:
+        raise ValueError("Tensor shape not compatible with 1site tdvp")
 
-def method_fast(H_eff, dt):
+def method_fast(tensor, H_eff, dt, **kwargs):
     """
     First order approximation to matrix exponential
     """
-    # n_legs = len(H_eff.shape)
-    # n_map = int(n_legs/2)
+    # full_dim = np.prod(H_eff.shape)
+    # sq_dim = int(np.sqrt(full_dim))
+    # id_mat = np.eye(sq_dim)
+    # id_full = id_mat.reshape(H_eff.shape)*(1+0j)
 
-    # #build identity for each pair of legs
-    # ids = [np.eye(dim) for dim in H_eff.shape[:n_map]]
-    # e = ids[0]
-    # for e in ids[0:]:
-    #     id_full = np.kron(id_full, e)
+    # assert id_full.shape==H_eff.shape, 'identity built wrong'
+    
+    if len(tensor.shape) == 3:
+        return tensor - 1j * (dt/2) * ncon((tensor, H_eff),
+                                            ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
+    elif len(tensor.shape) == 2:
+        return tensor - 1j * (dt/2) * ncon((tensor, H_eff),
+                                            ((1, 2), (1, 2, -1, -2)))
+    else:
+        raise ValueError("Tensor shape not compatible with 1site tdvp")
+    # return id_full - 0.5*1j*dt*H_eff
 
-    # # Permute indices
-    # perm1 = np.array([2*i for i in range(n_map)])
-    # perm = np.concatenate([perm1, perm1+1])
-    # id_full = np.transpose(id_full, perm)
-
-    full_dim = np.prod(H_eff.shape)
-    sq_dim = int(np.sqrt(full_dim))
-    id_mat = np.eye(sq_dim)
-    id_full = id_mat.reshape(H_eff.shape)*(1+0j)
-
-    assert id_full.shape==H_eff.shape, 'identity built wrong'
-
-    return id_full - 0.5*1j*dt*H_eff
-
-
-
-def method_lanczos(tensor, H_eff, dt, epsilon=1e-8):
+def method_lanczos(tensor, H_eff, dt, epsilon=1e-4):
     """
     Lanczos method for computing matrix exponential
     """
@@ -285,21 +290,35 @@ def method_lanczos(tensor, H_eff, dt, epsilon=1e-8):
     tensor_vec = tensor.reshape(sq_dim, 1)
     # build the lanczos vectors
     v0 = tensor_vec / la.norm(tensor_vec)
+    start = time.perf_counter()
+    vm = lanczos_loop(v0, H_eff_mat, epsilon=epsilon)
+    end = time.perf_counter()
+    print(f"time taken for loop: {end-start:.3f}")
+    Vm = np.column_stack(vm)
+    # if not Vm.shape == H_eff_mat.shape:
+    #     print(f'Lanczos method saved time! Required {Vm.shape[1]} vectors')
+    H_eff_lanczos = Vm.conj().T @ H_eff_mat @ Vm
+    # compute the exponential exactly
+    mat_exp = la.expm(-0.5*1j*dt*H_eff_lanczos)
+    updated_tensor = (Vm @ mat_exp)[:, 0]
+    updated_tensor = updated_tensor.reshape(tensor.shape)
+    return updated_tensor
+
+@jit
+def lanczos_loop(v0, H_eff_mat, epsilon=1e-4):
+    v0 = v0[:, 0]
     vm = [v0]
     converged = False
     while not converged:
         v = vm[-1]
         w = H_eff_mat @ v
-        w = w - sum([np.vdot(v_i, w) * v_i for v_i in vm])
-        norm_w = la.norm(w)
+        for v_i in vm:
+            # subtract the projection of w onto each previous vector
+            w -= np.dot(v_i.conjugate(), w) * v_i 
+        norm_w = np.real(np.sqrt(np.dot(w.conjugate(), w)))
         if norm_w < epsilon:
             converged = True
             break
-        vm.append(w / la.norm(w))
-    Vm = np.column_stack(vm)
-    H_eff_lanczos = Vm.conj().T @ H_eff_mat @ V_m
-    # compute the exponential exactly
-    mat_exp = la.expm(-0.5*1j*dt*H_eff_lanczos)
-    updated_tensor = (Vm @ mat_exp)[0, :]
-    updated_tensor = updated_tensor.reshape(tensor.shape)
-    return updated_tensor
+        vm.append(w / norm_w)
+    return vm
+
