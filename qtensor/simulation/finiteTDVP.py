@@ -13,6 +13,7 @@ from qtensor.operators import *
 
 
 """ 
+wrapppppppppppppppppppppppppppppp
 Finite TDVP for MPS
 
 References:
@@ -223,7 +224,7 @@ def gs_evolve(psi, H, t_f=1000, steps=100):
     print("Final energy:", expect(psi, H))
     return psi
 
-def inf_T_thermofield_variational(N, D, state=None):
+def inf_T_thermofield_variational(N, D, t_f=1000, steps=100, state=None, seed=0):
     """
     Build the infinite t thermofield using tdvp and 
     """
@@ -231,14 +232,14 @@ def inf_T_thermofield_variational(N, D, state=None):
     W = np.zeros((4, 4, 2, 2))
     v = [1, 0, 0, 1]
     W[:, :, 0, 0] = np.eye(4)
-    W[:, :, 0, 1] = np.eye(4) - 1*np.outer(v, v)  # positive energy cost for all states, negative for chosen state
+    W[:, :, 0, 1] = np.eye(4) - 2*np.outer(v, v)  # positive energy cost for all states, negative for chosen state
     W[:, :, 1, 1] = np.eye(4)
     l = np.array([1, 0])
     r = np.array([0, 1])
     H_gs = uniform_MPO(W, l, r, N)
     if not state:
-        state = random_mps(N, 4, D)
-    state = gs_evolve(state, H_gs)
+        state = random_mps(N, 4, D, seed=seed)
+    state = gs_evolve(state, H_gs, t_f, steps)
     return state
 
 def method_exact(tensor, H_eff, dt, **kwargs):
