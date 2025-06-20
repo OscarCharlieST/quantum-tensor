@@ -157,8 +157,8 @@ def extensive_twosite_local_term(H, site):
     Convention is that term takes the full 2-site term
     and half of the local term at each end.
     """
-    Wl = H[site]
-    Wr = H[site+1]
+    Wl = copy.deepcopy(H[site])
+    Wr = copy.deepcopy(H[site+1])
     i_one = Wl.shape[-1] - 1 # works with normal or thermofield
     Wl[:, :, 0, i_one] = Wl[:, :, 0, i_one] / 2 # only need half the single site term at each end
     Wr[:, :, 0, i_one] = Wr[:, :, 0, i_one] / 2

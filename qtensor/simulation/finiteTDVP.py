@@ -62,7 +62,7 @@ def tdvp(state, operator, t_f, steps, method,
             state_history[t] = now_state   
         if 'operators' in kwargs:
             # operators = [list of mpo]
-            expectations[t] = [expect(state, op) for op in kwargs['operators']]
+            expectations[t] = [local_expect(state, op) for op in kwargs['operators']]
             
         L_con = {min(state.sites)-1: 
                 ncon((state.L.conj().T @ state.L , operator.l), ((-1, -2), (-3,)))}
@@ -75,7 +75,7 @@ def tdvp(state, operator, t_f, steps, method,
     print('TDVP finished!')
     state_history[t_f] = copy.copy(state)
     if 'operators' in kwargs:
-        expectations[t_f] = [expect(state, op) for op in kwargs['operators']]
+        expectations[t_f] = [local_expect(state, op) for op in kwargs['operators']]
     return state_history, expectations
 
 def right_mpo_contractions(state, operator):
@@ -280,7 +280,7 @@ def method_fast(tensor, H_eff, dt, **kwargs):
         raise ValueError("Tensor shape not compatible with 1site tdvp")
     # return id_full - 0.5*1j*dt*H_eff
 
-def method_lanczos(tensor, H_eff, dt, epsilon=1e-4):
+def method_lanczos(tensor, H_eff, dt, epsilon=1e-4, iter_limit=8):
     """
     Lanczos method for computing matrix exponential
     """
@@ -291,7 +291,7 @@ def method_lanczos(tensor, H_eff, dt, epsilon=1e-4):
     # build the lanczos vectors
     v0 = tensor_vec / la.norm(tensor_vec)
     start = time.perf_counter()
-    vm = lanczos_loop(v0, H_eff_mat, epsilon=epsilon)
+    vm = lanczos_loop(v0, H_eff_mat, epsilon=epsilon, iter_limit=iter_limit)
     end = time.perf_counter()
     print(f"time taken for loop: {end-start:.3f}")
     Vm = np.column_stack(vm)
@@ -305,11 +305,12 @@ def method_lanczos(tensor, H_eff, dt, epsilon=1e-4):
     return updated_tensor
 
 @jit
-def lanczos_loop(v0, H_eff_mat, epsilon=1e-4):
+def lanczos_loop(v0, H_eff_mat, epsilon=1e-4, iter_limit=8):
     v0 = v0[:, 0]
     vm = [v0]
     converged = False
-    while not converged:
+    iter_limit = 0
+    while not converged and iter_limit > len(vm):
         v = vm[-1]
         w = H_eff_mat @ v
         for v_i in vm:
@@ -320,5 +321,6 @@ def lanczos_loop(v0, H_eff_mat, epsilon=1e-4):
             converged = True
             break
         vm.append(w / norm_w)
+        iter_limit += 1
     return vm
 
