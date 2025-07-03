@@ -324,4 +324,3 @@ def lanczos_loop(v0, H_eff_mat, epsilon=1e-4, iter_limit=8):
         vm.append(w / norm_w)
         iter_limit += 1
     return vm
-
