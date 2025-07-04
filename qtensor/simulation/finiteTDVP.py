@@ -47,7 +47,8 @@ def tdvp(state, operator, t_f, steps, method,
         expectations: dict
             {time: [expectation of each operator provided]}
     """
-    print('Initiating TDVP')
+    if verbose:
+        print('Initiating TDVP')
     # t = 0
     times = np.linspace(0, t_f, steps+1)
     dt = t_f/steps
@@ -73,10 +74,8 @@ def tdvp(state, operator, t_f, steps, method,
         state, _, R_con = tdvp_sweep_l(state, operator, dt, L_con, R_con, method)
 
         # t += dt
-    print('TDVP finished!')
-    state_history[t_f] = copy.copy(state)
-    if 'operators' in kwargs:
-        expectations[t_f] = [local_expect(state, op) for op in kwargs['operators']]
+    if verbose:
+        print('TDVP finished!')
     return state_history, expectations
 
 def right_mpo_contractions(state, operator):
@@ -114,9 +113,6 @@ def tdvp_step_r(state, operator, dt, L_con, R_con, method):
     
     H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
                  ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
-    # M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
-    # exp_H_eff = method(H_eff, dt)
-    # M_new = ncon((M, exp_H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
     M_new = method(M, H_eff, dt)
 
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
@@ -125,9 +121,6 @@ def tdvp_step_r(state, operator, dt, L_con, R_con, method):
     L_con[c_site] = contract_left(L_con[c_site-1], A_new, operator[c_site])
     if not c_site == max(state.sites):
         H_eff_bond = ncon((L_con[c_site], R_con[c_site+1]), ((-1, -3, 1), (-2, -4, 1)))
-        # C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
-        # exp_H_eff_bond = method(H_eff_bond, -dt)
-        # C_new = ncon((C_new, exp_H_eff_bond), ((1, 2), (1, 2, -1, -2)))
         C_new = method(C_new, H_eff_bond, -dt)
 
         C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
@@ -144,9 +137,6 @@ def tdvp_step_l(state, operator, dt, L_con, R_con, method):
     d, Dl, Dr = M.shape
     H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
                  ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
-    # M_new = M - 1j * (dt/2) * ncon((M, H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
-    # exp_H_eff = method(H_eff, dt)
-    # M_new = ncon((M, exp_H_eff), ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
     M_new = method(M, H_eff, dt)
 
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
@@ -155,9 +145,6 @@ def tdvp_step_l(state, operator, dt, L_con, R_con, method):
     R_con[c_site] = contract_right(R_con[c_site+1], B_new, operator[c_site])
     if not c_site == min(state.sites):
         H_eff_bond = ncon((L_con[c_site-1], R_con[c_site]), ((-1, -3, 1), (-2, -4, 1)))
-        # C_new = C_new + 1j * (dt/2) * ncon((C_new, H_eff_bond), ((1, 2), (1, 2, -1, -2)))
-        # exp_H_eff_bond = method(H_eff_bond, -dt)
-        # C_new = ncon((C_new, exp_H_eff_bond), ((1, 2), (1, 2, -1, -2)))
         C_new = method(C_new, H_eff_bond, -dt)
 
         C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
