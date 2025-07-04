@@ -44,7 +44,7 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None):
                                      cmap='viridis')
     
     ax[0,].add_collection(line_collection)
-    ax[0,].set_xlim(0, len(H_terms)-1)
+    ax[0,].set_xlim(1, len(H_terms)-2)
     ax[0,].set_xticks(sites)
     ax[0,].set_ylim(np.min(np.array(E_profiles)[:,:,1]),
                     np.max(np.array(E_profiles)[:,:,1]))
