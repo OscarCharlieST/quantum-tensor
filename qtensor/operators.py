@@ -183,9 +183,12 @@ def extensive_as_terms(H):
     """
     loc_ops = []
     for site in sorted(H.sites):
-        if not site == max(H.sites):
+        if site == min(H.sites):
+            loc_ops.append(extensive_twosite_local_term(H, site, edge='l'))
+        elif not site == max(H.sites)-1:
             loc_ops.append(extensive_twosite_local_term(H, site))
         else:
+            loc_ops.append(extensive_twosite_local_term(H, site, edge='r'))
             return loc_ops
 
 def expect(state, operator):
