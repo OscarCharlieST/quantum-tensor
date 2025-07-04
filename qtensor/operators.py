@@ -151,17 +151,24 @@ def two_site_pauli(site_l, pauli_l='z', pauli_r='z'):
     r = np.array([1,])
     return mpo([(site_l, W_l), (site_l+1, W_r)], l, r)
 
-def extensive_twosite_local_term(H, site):
+def extensive_twosite_local_term(H, site, edge=False):
     """
     Construct a local (2site) energy term between (site, site+1)
     Convention is that term takes the full 2-site term
     and half of the local term at each end.
     """
+    r_mult=0.5
+    l_mult=0.5
+    if edge:
+        if edge=='r':
+            r_mult=1.0
+        elif edge=='l':
+            l_mult=1.0
     Wl = copy.deepcopy(H[site])
     Wr = copy.deepcopy(H[site+1])
     i_one = Wl.shape[-1] - 1 # works with normal or thermofield
-    Wl[:, :, 0, i_one] = Wl[:, :, 0, i_one] / 2 # only need half the single site term at each end
-    Wr[:, :, 0, i_one] = Wr[:, :, 0, i_one] / 2
+    Wl[:, :, 0, i_one] = Wl[:, :, 0, i_one] * l_mult # only need half the single site term at each end
+    Wr[:, :, 0, i_one] = Wr[:, :, 0, i_one] * r_mult
     l = np.zeros(Wl.shape[-2])
     l[0] = 1
     r = np.zeros(Wr.shape[-1]) # contract with these left and right of the MPO chain
@@ -170,7 +177,9 @@ def extensive_twosite_local_term(H, site):
 
 def extensive_as_terms(H):
     """
-    Takes extensive local mpo, returns list of local summands
+    Takes extensive local mpo, returns list of local summands*
+
+    *Edge terms take extra half of the local term
     """
     loc_ops = []
     for site in sorted(H.sites):
