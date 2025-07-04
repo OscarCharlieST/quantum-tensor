@@ -49,13 +49,11 @@ def tdvp(state, operator, t_f, steps, method,
     """
     if verbose:
         print('Initiating TDVP')
-    # t = 0
     times = np.linspace(0, t_f, steps+1)
     dt = t_f/steps
     R_con = right_mpo_contractions(state, operator)
     state_history = {}
     expectations = {}
-    # while np.abs(t)<np.abs(t_f): # abs in case of imaginary time
     for t in times:
         if verbose:
             print(f't: {t:.3f}')
@@ -63,7 +61,6 @@ def tdvp(state, operator, t_f, steps, method,
             now_state = copy.copy(state)
             state_history[t] = now_state   
         if 'operators' in kwargs:
-            # operators = [list of mpo]
             expectations[t] = [local_expect(state, op) for op in kwargs['operators']]
             
         L_con = {min(state.sites)-1: 
@@ -73,7 +70,6 @@ def tdvp(state, operator, t_f, steps, method,
                 ncon((state.R @ state.R.conj().T , operator.r), ((-1, -2), (-3,)))}
         state, _, R_con = tdvp_sweep_l(state, operator, dt, L_con, R_con, method)
 
-        # t += dt
     if verbose:
         print('TDVP finished!')
     return state_history, expectations
