@@ -99,3 +99,17 @@ def near_thermal(H, profile, D, steps=100, initial_state=None):
     state, _, _ = finite_T_thermofield(1, len(profile), D, H_eff, steps=steps, initial_state=initial_state,
                                        plot=False)
     return state
+
+def near_thermal_first_order_deformed(D, beta_profile, J=1, h=0.25, g=-0.525, t=1.0):
+    """
+    Produces a near-thermal state with an additional deformation corresponding to the first order change in energy 
+    For low temperatures, the near-thermal density matrix is rho = 1/z (1 + beta_i h_i)
+    The time derivative of the density matrix is i[rho, H]
+    So to first order in t, rho(t) = rho + i t [rho, H] = 1/z (1 + beta_i(h_i + i t [h_i, H]))
+    So we modify the generator of the thermal state h_i -> h_i + i t [h_i, H]
+    the larger t is, the further the deviation from the near thermal ansatz
+    """
+    fodh = ops.first_order_deformation_generator(beta_profile, J, h, g, t)
+    tf_fodg = thermofield_hamiltonian(fodh)
+    state, _, _ = finite_T_thermofield(1, len(beta_profile), D, tf_fodg, steps=200, plot=False, method=sim.method_exact)
+    return state
