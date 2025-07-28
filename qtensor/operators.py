@@ -119,6 +119,20 @@ def thermofield_hamiltonian(H):
     r = np.array([0, 0, 0, 1])
     return mpo(H_th, l, r)
 
+def thermofield_hamiltonian_improved(H):
+    """
+    Improved version of thermofield_hamiltonian that works for arbitrarily many 2-site terms.
+    Takes in 2(n+2) x 2(n+2) hamiltonian of the form
+    I  Hl1 Hl2 ... Hln  h
+    0   0   0  ...  0  Hrn
+    ¦   ¦   ¦  `.,  ¦   ¦
+    0   0   0  ...  0  Hr2
+    0   0   0  ...  0  Hr1
+    0   0   0  ...  0   I
+
+    and makes it into a symetric thermofield HxI + IxH
+    """
+
 def norm_operator(N, d):
     W = np.zeros((d, d, 2, 2), dtype=np.complex64)
     W[:, :, 0, 0] = np.eye(d)
@@ -243,4 +257,11 @@ def pauli(i):
         return np.array([[1, 0], [0, -1]])
     else:
         raise ValueError("Invalid input: must be one of 'x', 'y', or 'z'.")
+    
+def first_order_deformation_generator():
+    """
+    Specifically for TFI hamiltonian and a temperature profile and a parameter t, calculate
+    an mpo for h_i + i t [h_i, H]
+    """
+
     
