@@ -71,7 +71,7 @@ def tilted_ising(J=1, h=0.25, g=-0.525, N=1):
     W = np.zeros((2, 2, 3, 3), dtype=np.complex64)
     W[:, :, 0, 0] = np.eye(2)
     W[:, :, 2, 2] = np.eye(2)
-    W[:, :, 0, 1] = -J * z
+    W[:, :, 0, 1] = J * z
     W[:, :, 1, 2] = z
     W[:, :, 0, 2] = h * z + g * x
     l = np.array([1, 0, 0])
@@ -257,11 +257,4 @@ def pauli(i):
         return np.array([[1, 0], [0, -1]])
     else:
         raise ValueError("Invalid input: must be one of 'x', 'y', or 'z'.")
-    
-def first_order_deformation_generator():
-    """
-    Specifically for TFI hamiltonian and a temperature profile and a parameter t, calculate
-    an mpo for h_i + i t [h_i, H]
-    """
-
     
