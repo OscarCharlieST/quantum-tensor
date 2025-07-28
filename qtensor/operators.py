@@ -257,4 +257,24 @@ def pauli(i):
         return np.array([[1, 0], [0, -1]])
     else:
         raise ValueError("Invalid input: must be one of 'x', 'y', or 'z'.")
-    
+
+def first_order_deformation_generator(beta_profile, J=1, h=0.25, g=-0.525, t=1):
+    """
+    Specifically for TFI hamiltonian and a temperature profile and a parameter t, calculate
+    an mpo for h_i + i t [h_i, H]
+    ! NOTE !
+    This is the appropriate generator for the density matrix. 
+    Whether or not you can simply plug it into the purification formulae I dont know...
+    """
+    y = pauli('y')
+    delta_beta = beta_profile[1:] - beta_profile[:-1]
+    delta_beta.append(delta_beta[-1])  # extend to match length of beta_profile, with gradient equal at last point
+    initial_mpo = tilted_ising(J, h, g, len(beta_profile))
+    Ws = initial_mpo.tensors
+    newWs = {}
+    for i, W in enumerate(Ws):
+        W[:, :, 0, 1] = W[:, :, 0, 1]
+        W[:, :, 1, 2] = W[:, :, 1, 2]*beta_profile[i] + 2*g*t*delta_beta[i]*y
+        W[:, :, 0, 2] = W[:, :, 0, 2]*beta_profile[i]
+        newWs.append((i,W))
+    return mpo(newWs, initial_mpo.l, initial_mpo.r)
