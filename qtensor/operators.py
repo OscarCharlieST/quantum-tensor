@@ -165,24 +165,17 @@ def two_site_pauli(site_l, pauli_l='z', pauli_r='z'):
     r = np.array([1,])
     return mpo([(site_l, W_l), (site_l+1, W_r)], l, r)
 
-def extensive_twosite_local_term(H, site, edge=False):
+def extensive_twosite_local_term(H, site):
     """
     Construct a local (2site) energy term between (site, site+1)
     Convention is that term takes the full 2-site term
     and half of the local term at each end.
     """
-    r_mult=0.5
-    l_mult=0.5
-    if edge:
-        if edge=='r':
-            r_mult=1.0
-        elif edge=='l':
-            l_mult=1.0
     Wl = copy.deepcopy(H[site])
     Wr = copy.deepcopy(H[site+1])
     i_one = Wl.shape[-1] - 1 # works with normal or thermofield
-    Wl[:, :, 0, i_one] = Wl[:, :, 0, i_one] * l_mult # only need half the single site term at each end
-    Wr[:, :, 0, i_one] = Wr[:, :, 0, i_one] * r_mult
+    Wl[:, :, 0, i_one] = Wl[:, :, 0, i_one] / 2 # only need half the single site term at each end
+    Wr[:, :, 0, i_one] = Wr[:, :, 0, i_one] / 2
     l = np.zeros(Wl.shape[-2])
     l[0] = 1
     r = np.zeros(Wr.shape[-1]) # contract with these left and right of the MPO chain
@@ -191,18 +184,13 @@ def extensive_twosite_local_term(H, site, edge=False):
 
 def extensive_as_terms(H):
     """
-    Takes extensive local mpo, returns list of local summands*
-
-    *Edge terms take extra half of the local term
+    Takes extensive local mpo, returns list of local summands
     """
     loc_ops = []
     for site in sorted(H.sites):
-        if site == min(H.sites):
-            loc_ops.append(extensive_twosite_local_term(H, site, edge='l'))
-        elif not site == max(H.sites)-1:
+        if not site == max(H.sites):
             loc_ops.append(extensive_twosite_local_term(H, site))
         else:
-            loc_ops.append(extensive_twosite_local_term(H, site, edge='r'))
             return loc_ops
 
 def expect(state, operator):
@@ -270,7 +258,7 @@ def pauli(i):
     else:
         raise ValueError("Invalid input: must be one of 'x', 'y', or 'z'.")
 
-def first_order_deformation_generator(beta_profile, J=1, h=0.25, g=-0.525, t=1):
+def first_order_deformation_generator(beta_profile, J=1, h=0.25, g=-0.525, t=1.0):
     """
     Specifically for TFI hamiltonian and a temperature profile and a parameter t, calculate
     an mpo for h_i + i t [h_i, H]
@@ -279,10 +267,10 @@ def first_order_deformation_generator(beta_profile, J=1, h=0.25, g=-0.525, t=1):
     Whether or not you can simply plug it into the purification formulae I dont know...
     """
     y = pauli('y')
-    delta_beta = beta_profile[1:] - beta_profile[:-1]
+    delta_beta = list(beta_profile[1:] - beta_profile[:-1])
     delta_beta.append(delta_beta[-1])  # extend to match length of beta_profile, with gradient equal at last point
     initial_mpo = tilted_ising(J, h, g, len(beta_profile))
-    Ws = initial_mpo.tensors
+    Ws = initial_mpo.tensors # is this right?
     newWs = {}
     for i, W in enumerate(Ws):
         W[:, :, 0, 1] = W[:, :, 0, 1]
