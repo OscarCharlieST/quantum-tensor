@@ -29,6 +29,8 @@ class mpo:
         self.r = r
         self.d = Ws[0][1].shape[0]
         self.D = Ws[0][1].shape[2]
+
+    # basic methods
     
     def __getitem__(self, position):
         if position in self.tensors.keys():
@@ -38,6 +40,50 @@ class mpo:
         
     def __setitem__(self, position, tensor):
         self.tensors[position] = tensor
+
+    def __deepcopy__(self):
+        new_tensors = {k: copy.deepcopy(v) for k, v in self.tensors.items()}
+        new_mpo = mpo(list(new_tensors.items()), 
+                      copy.deepcopy(self.l), copy.deepcopy(self.r))
+        return new_mpo
+
+    # more complex functions
+    def combine_mpos(self, mpo2, after=True):
+        """
+        Turn sequentially applied MPOs into a single MPO.
+        mpo2 is the operator applied to the ket *after* the current mpo.
+        """
+        assert self.d == mpo2.d, "MPOs must have the same local dimension"
+        site_set_1 = set(self.sites)
+        l1 = self.l
+        r1 = self.r
+        site_set_2 = set(mpo2.sites)
+        l2 = mpo2.l
+        r2 = mpo2.r
+        for site in site_set_1.union(site_set_2):
+            if site in site_set_1.intersection(site_set_2):
+                W1 = self.tensors[site]
+                W2 = mpo2.tensors[site]
+            elif site in site_set_1:
+                W1 = self.tensors[site]
+                W2 = ncon((np.eye(self.d), np.eye(mpo2.D)),
+                          ((-1, -2), (-3, -4)))
+            else:
+                W1 = ncon((np.eye(self.d), np.eye(self.D)),
+                          ((-1, -2), (-3, -4)))
+                W2 = mpo2.tensors[site]
+            if after:
+                Wnew = ncon((W1, W2), ((-1, 1, -3, -5), (1, -2, -4, -6)))
+                self.l = np.concatenate((l1, l2))
+                self.r = np.concatenate((r1, r2))
+            else:
+                Wnew = ncon((W2, W1), ((-1, 1, -3, -5), (1, -2, -4, -6)))
+                self.l = np.concatenate((l2, l1))
+                self.r = np.concatenate((r2, r1))
+            sp = Wnew.shape
+            Wnew.reshape(sp[0], sp[1], sp[2]*sp[3], sp[4]*sp[5])
+            self.tensors[site] = Wnew
+        self.D = self.l.shape[0]
 
 
 def uniform_MPO(W, l, r, N):
@@ -271,10 +317,12 @@ def first_order_deformation_generator(beta_profile, J=1, h=0.25, g=-0.525, t=1.0
     delta_beta.append(delta_beta[-1])  # extend to match length of beta_profile, with gradient equal at last point
     initial_mpo = tilted_ising(J, h, g, len(beta_profile))
     Ws = initial_mpo.tensors # is this right?
-    newWs = {}
-    for i, W in enumerate(Ws):
+    newWs = []
+    for i in Ws.keys():
+        W = copy.deepcopy(Ws[i])
         W[:, :, 0, 1] = W[:, :, 0, 1]
         W[:, :, 1, 2] = W[:, :, 1, 2]*beta_profile[i] + 2*g*t*delta_beta[i]*y
         W[:, :, 0, 2] = W[:, :, 0, 2]*beta_profile[i]
         newWs.append((i,W))
     return mpo(newWs, initial_mpo.l, initial_mpo.r)
+    
