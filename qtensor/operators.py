@@ -48,7 +48,7 @@ class mpo:
         return new_mpo
 
     # more complex functions
-    def combine_mpos(self, mpo2, after=True):
+    def combine(self, mpo2, after=True):
         """
         Turn sequentially applied MPOs into a single MPO.
         mpo2 is the operator applied to the ket *after* the current mpo.
@@ -84,6 +84,7 @@ class mpo:
             Wnew.reshape(sp[0], sp[1], sp[2]*sp[3], sp[4]*sp[5])
             self.tensors[site] = Wnew
         self.D = self.l.shape[0]
+        
 
 
 def uniform_MPO(W, l, r, N):
@@ -231,11 +232,13 @@ def extensive_twosite_local_term(H, site):
 def extensive_as_terms(H):
     """
     Takes extensive local mpo, returns list of local summands
+    ### SHOULD CHANGE THIS TO BE DICTIONARY!
+    ## changed, but miht be some dependency issues
     """
-    loc_ops = []
+    loc_ops = {}
     for site in sorted(H.sites):
         if not site == max(H.sites):
-            loc_ops.append(extensive_twosite_local_term(H, site))
+            loc_ops[site] = extensive_twosite_local_term(H, site)
         else:
             return loc_ops
 
@@ -325,4 +328,27 @@ def first_order_deformation_generator(beta_profile, J=1, h=0.25, g=-0.525, t=1.0
         W[:, :, 0, 2] = W[:, :, 0, 2]*beta_profile[i]
         newWs.append((i,W))
     return mpo(newWs, initial_mpo.l, initial_mpo.r)
-    
+
+def commutator(A, B):
+    """
+    Takes two MPOS and returns their commutator AB - BA
+    """
+    A.combine_mpos(B, after=False)
+
+def dhi_dt(state, H_terms, site):
+    """
+    Time derivatie of loccal energy density at site
+    """
+    h_i = H_terms[site]
+    h_r = H_terms[site + 1]
+    h_l = H_terms[site - 1]
+    h_i_h_r = copy.deepcopy(h_i)
+    h_i_h_r.combine(h_r, after=True)
+    h_r_h_i = copy.deepcopy(h_i)
+    h_r_h_i.combine(h_r, after=False)
+    h_i_h_l = copy.deepcopy(h_i)
+    h_i_h_l.combine(h_l, after=True)
+    h_l_h_i = copy.deepcopy(h_i)
+    h_l_h_i.combine(h_l, after=False)
+    return -1j*(local_expect(state, h_i_h_r) - local_expect(state, h_r_h_i) +
+                local_expect(state, h_i_h_l) - local_expect(state, h_l_h_i))
