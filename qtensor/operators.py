@@ -41,10 +41,10 @@ class mpo:
     def __setitem__(self, position, tensor):
         self.tensors[position] = tensor
 
-    def __deepcopy__(self):
-        new_tensors = {k: copy.deepcopy(v) for k, v in self.tensors.items()}
+    def __deepcopy__(self, memo):
+        new_tensors = {k: copy.deepcopy(v, memo) for k, v in self.tensors.items()}
         new_mpo = mpo(list(new_tensors.items()), 
-                      copy.deepcopy(self.l), copy.deepcopy(self.r))
+                      copy.deepcopy(self.l, memo), copy.deepcopy(self.r, memo))
         return new_mpo
 
     # more complex functions
