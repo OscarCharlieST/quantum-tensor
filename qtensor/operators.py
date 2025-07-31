@@ -166,7 +166,7 @@ def thermofield_hamiltonian(H):
     r = np.array([0, 0, 0, 1])
     return mpo(H_th, l, r)
 
-def thermofield_hamiltonian_improved(H):
+def symmetric_thermofield(H):
     """
     Improved version of thermofield_hamiltonian that works for arbitrarily many 2-site terms.
     Takes in 2(n+2) x 2(n+2) hamiltonian of the form
@@ -179,6 +179,34 @@ def thermofield_hamiltonian_improved(H):
 
     and makes it into a symetric thermofield HxI + IxH
     """
+    D = H.D
+    H_th = {}
+    for i in H.sites:
+        W = H[i]
+        Hls = [W[:, :, 0, k] for k in range(1, D-1)]
+        Hrs = [W[:, :, k, D] for k in range(1, D-1)]
+        h = W[:, :, 0, D]
+
+        W_th = np.zeros((4, 4, 4, 4), dtype=np.complex64)
+        W_th[:, :, 0, 0] = np.kron(np.eye(2), np.eye(2))
+        W_th[:, :, 3, 3] = np.kron(np.eye(2), np.eye(2))
+
+        # Two-site terms
+        for k, Hl, Hr in zip(range(1, D-1), Hls, Hrs):
+            W_th[:, :, 0, 2*k-1] = np.kron(Hl, np.eye(2)) # real copy
+            W_th[:, :, 0, 2*k] = np.kron(np.eye(2), Hl) # auxilliary
+            W_th[:, :, 2*k-1, D] = np.kron(Hr, np.eye(2)) 
+            W_th[:, :, 2*k, D] = np.kron(np.eye(2), Hr)
+
+        # Local terms
+        W_th[:, :, 0, 3] = np.kron(h, np.eye(2)) + np.kron(np.eye(2), h)
+        H_th.append((i, W_th))
+
+    l = np.zeros(D)
+    l[0] = 1
+    r = np.zeros(D)
+    r[-1] = 1
+    return mpo(H_th, l, r)
 
 def norm_operator(N, d):
     W = np.zeros((d, d, 2, 2), dtype=np.complex64)
