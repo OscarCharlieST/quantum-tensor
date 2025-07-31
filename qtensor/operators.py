@@ -395,4 +395,4 @@ def dhi_dt(state, site, J=1, g=-0.525):
     """
     commutator = ising_commutator(site, J, g)
     thf_commutator = symmetric_thermofield(commutator)
-    return local_expect(state, thf_commutator)
+    return -1j*local_expect(state, thf_commutator)
