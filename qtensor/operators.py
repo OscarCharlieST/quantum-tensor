@@ -394,5 +394,5 @@ def dhi_dt(state, site, J=1, g=-0.525):
     Time derivative of local energy density at site
     """
     commutator = ising_commutator(site, J, g)
-
-    return local_expect(state, commutator)
+    thf_commutator = symmetric_thermofield(commutator)
+    return local_expect(state, thf_commutator)
