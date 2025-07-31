@@ -329,26 +329,42 @@ def first_order_deformation_generator(beta_profile, J=1, h=0.25, g=-0.525, t=1.0
         newWs.append((i,W))
     return mpo(newWs, initial_mpo.l, initial_mpo.r)
 
-def commutator(A, B):
+def ising_commutator(site, J, g):
     """
-    Takes two MPOS and returns their commutator AB - BA
+    Specifically for TFI hamiltonian, calculate the commutator
+    [h_i, H] where h_i is the local term at site i and H is the full hamiltonian.
+    Uses the convention that the h_i contains local terms on site i
+    and 2-local terms on i and i+1.
+    h_i = J z_i z_i+1 + h z_i + g x_i
+    [h_i, h_i+1] = Jg (z_i [z_i+1, x_i+1]) 
+                 = 2j*J*g z_i y_i+1
+    [h_i, h_i-1] = -2j*J*g z_i-1 y_i 
+    [h_i, H] = [h_i, h_i+1] + [h_i, h_i-1] = 2j*J*g*(z_i y_i+1 - z_i-1 y_i)
+    returns it as a single 3-site mpo.
     """
-    A.combine_mpos(B, after=False)
+    x, y, z = [pauli(i) for i in ['x', 'y', 'z']]
+    Wl, Wi, Wr = [np.zeros((2, 2, 3, 3), dtype=np.complex128)]*3
+    Wl[:, :, 0, 0] = np.eye(2)
+    Wl[:, :, 2, 2] = np.eye(2)
+    Wl[:, :, 0, 1] = -2j*J*g * z
 
-def dhi_dt(state, H_terms, site):
+    Wi[:, :, 0, 0] = np.eye(2)
+    Wi[:, :, 2, 2] = np.eye(2)
+    Wi[:, :, 0, 1] = 2j*J*g * z
+    Wi[:, :, 1, 2] = y
+
+    Wr[:, :, 0, 0] = np.eye(2)
+    Wr[:, :, 2, 2] = np.eye(2)
+    Wr[:, :, 1, 2] = y
+
+    l = np.array([1, 0, 0])
+    r = np.array([0, 0, 1]) # contract with these left and right of the MPO chain
+    return mpo([(site-1, Wl), (site, Wi), (site+1, Wr)], l, r)
+
+def dhi_dt(state, site, J=1, g=-0.525):
     """
-    Time derivatie of loccal energy density at site
+    Time derivative of local energy density at site
     """
-    h_i = H_terms[site]
-    h_r = H_terms[site + 1]
-    h_l = H_terms[site - 1]
-    h_i_h_r = copy.deepcopy(h_i)
-    h_i_h_r.combine(h_r, after=True)
-    h_r_h_i = copy.deepcopy(h_i)
-    h_r_h_i.combine(h_r, after=False)
-    h_i_h_l = copy.deepcopy(h_i)
-    h_i_h_l.combine(h_l, after=True)
-    h_l_h_i = copy.deepcopy(h_i)
-    h_l_h_i.combine(h_l, after=False)
-    return -1j*(local_expect(state, h_i_h_r) - local_expect(state, h_r_h_i) +
-                local_expect(state, h_i_h_l) - local_expect(state, h_l_h_i))
+    commutator = ising_commutator(site, J, g)
+
+    return local_expect(state, commutator)
