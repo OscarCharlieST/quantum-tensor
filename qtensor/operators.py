@@ -103,6 +103,7 @@ def uniform_MPO(W, l, r, N):
 def contract_left(L, A, W):
     return ncon((L, A, A.conj(), W),
                 ((1, 2, 3), (4, 1, -1), (5, 2, -2), (4, 5, 3, -3)))
+
 def contract_right(R, A, W):
     return ncon((R, A, A.conj(), W),
                 ((1, 2, 3), (4, -1, 1), (5, -2, 2), (4, 5, -3, 3)))
