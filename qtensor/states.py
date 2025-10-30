@@ -217,6 +217,7 @@ def left_canonicalize(statedict, rootL, rootR, diagonal=True):
         rootL_new = rootL_new @ v
         return PsiL, rootL_new, rootR_new
     
+<<<<<<< HEAD
 def left_canonicalize_compress(statedict, rootL, rootR, diagonal=True):
     """
     Left canonicalize an MPS Psi
@@ -257,6 +258,36 @@ def left_canonicalize_compress(statedict, rootL, rootR, diagonal=True):
         # Apply the gauge transformations to the left environment
         rootL_new = rootL_new @ v
         return PsiL, rootL_new, rootR_new
+=======
+def left_canonicalize_compress(statedict, max_bond_dim):
+    sites = sorted(statedict.keys())
+    PsiL = {}
+    # Orthogonalise leftmost tensor first
+    M = statedict[sites[0]]
+    assert len(M.shape) == 2, "Leftmost tensor must be a matrix."
+    U, s, V = la.svd(M, full_matrices=False)
+    PsiL[sites[0]] = U
+    for i in sites[1:-1]:
+        M = statedict[i]
+        M_eff = np.diag(s) @ V @ M
+        d, Dl, Dr = M_eff.shape
+        M_eff_mat = M_eff.reshape(d*Dl, Dr)
+        U, s, V = la.svd(M_eff_mat, full_matrices=False)
+        # Truncate
+        chi = min(len(s), max_bond_dim)
+        U = U[:, :chi]
+        s = s[:chi]
+        V = V[:chi,:]
+        PsiL[i] = U.reshape(d, Dl, chi)
+    # Handle rightmost tensor
+    M = statedict[sites[-1]]
+    assert len(M.shape) == 2, "rightmost tensor must be a matrix."
+    print(s.shape, V.shape, M.shape)
+    M_eff = np.diag(s) @ V @ M.T
+    PsiL[sites[-1]] = M_eff
+    return PsiL
+
+>>>>>>> cfc87d611595f45648ee729c8d556fda6850d507
 
 def right_canonicalize(statedict, rootL, rootR, diagonal=True):
     """
