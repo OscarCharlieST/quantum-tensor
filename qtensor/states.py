@@ -217,7 +217,41 @@ def left_canonicalize(statedict, rootL, rootR, diagonal=True):
         rootL_new = rootL_new @ v
         return PsiL, rootL_new, rootR_new
     
-def left_canonicalize_compress(statedict, max_bond_dim):
+def left_orthogonal_tensor(M, max_bond_dim):
+    """
+    Left orthogonalize and compress a MPS tensor
+
+    INPUTS:
+    M: (d, Dl, Dr) array, bulk mps tensor (doesn't work for edge (rank 2) tensors)
+    max_bond_dim: int, max bond dimension to truncate to if nessecary
+
+    RETURNS:
+    M_lorth: (d, Dl, chi) array, left orthogonal tensor with truncated dimension chi
+    G: (chi, Dr) array, the gauge transformation to be applied to the right
+    """
+    d, Dl, Dr = M.shape
+    M_eff_mat = M.reshape(d*Dl, Dr)
+    U, s, V = la.svd(M_eff_mat, full_matrices=False)
+    # Truncate
+    chi = min(len(s), max_bond_dim)
+    U = U[:, :chi]
+    s = s[:chi]
+    V = V[:chi,:]
+    M_lorth = U.reshape(d, Dl, chi)
+    G = np.diag(s) @ V
+    return M_lorth, G
+    
+def left_orthogonal_state(statedict, max_bond_dim):
+    """
+    Left orthogonalize a full MPS
+
+    INPUTS:
+    statedict: dict of {site:mps tensor} pairs
+    max_bond_dim: int, max bond dimension to truncate to if nessecary
+
+    RETURNS:
+    PsiL: dict of {site:mps tensor} pairs, left orthogonalized
+    """
     sites = sorted(statedict.keys())
     PsiL = {}
     # Orthogonalise leftmost tensor first
@@ -225,25 +259,68 @@ def left_canonicalize_compress(statedict, max_bond_dim):
     assert len(M.shape) == 2, "Leftmost tensor must be a matrix."
     U, s, V = la.svd(M, full_matrices=False)
     PsiL[sites[0]] = U
+    G = np.diag(s) @ V
     for i in sites[1:-1]:
         M = statedict[i]
-        M_eff = np.diag(s) @ V @ M
-        d, Dl, Dr = M_eff.shape
-        M_eff_mat = M_eff.reshape(d*Dl, Dr)
-        U, s, V = la.svd(M_eff_mat, full_matrices=False)
-        # Truncate
-        chi = min(len(s), max_bond_dim)
-        U = U[:, :chi]
-        s = s[:chi]
-        V = V[:chi,:]
-        PsiL[i] = U.reshape(d, Dl, chi)
+        M_eff = G @ M
+        M_lorth, G = left_orthogonal_tensor(M_eff, max_bond_dim)
+        PsiL[i] = M_lorth
     # Handle rightmost tensor
     M = statedict[sites[-1]]
     assert len(M.shape) == 2, "rightmost tensor must be a matrix."
-    print(s.shape, V.shape, M.shape)
-    M_eff = np.diag(s) @ V @ M.T
+    M_eff = G @ M.T
     PsiL[sites[-1]] = M_eff
     return PsiL
+
+def right_orthogonal_tensor(M, max_bond_dim):
+    """
+    Right orthogonalize and compress a MPS tensor
+
+    INPUTS:
+    M: (d, Dl, Dr) array, bulk mps tensor (doesn't work for edge (rank 2) tensors)
+    max_bond_dim: int, max bond dimension to truncate to if nessecary
+
+    RETURNS:
+    M_rorth: (d, chi, Dr) array, left orthogonal tensor with truncated dimension chi
+    G: (Dl, chi) array, the gauge transformation to be applied to the left
+    """
+    d, Dl, Dr = M.shape
+    M_trans = ncon(M, (-1, -3, -2))
+    # Use Left canoncalization on transposed tensor
+    M_trans_lorth, G_trans = left_orthogonal_tensor(M_trans, max_bond_dim)
+    M_rorth = ncon(M_trans_lorth, (-1, -3, -2))
+    G = G_trans.T
+    return M_rorth, G
+    
+def right_orthogonal_state(statedict, max_bond_dim):
+    """
+    Right orthogonalize a full MPS
+
+    INPUTS:
+    statedict: dict of {site:mps tensor} pairs
+    max_bond_dim: int, max bond dimension to truncate to if nessecary
+
+    RETURNS:
+    PsiL: dict of {site:mps tensor} pairs, right orthogonalized
+    """
+    sites = sorted(statedict.keys(), reverse=True) # Sort from largest site index to smallest
+    PsiR = {}
+    # Orthogonalise leftmost tensor first
+    M = statedict[sites[0]]
+    assert len(M.shape) == 2, "Rightmost tensor must be a matrix."
+    U, s, V = la.svd(M.T, full_matrices=False)
+    PsiR[sites[0]] = V.T
+    G = U @ np.diag(s)
+    for i in sites[1:-1]:
+        M = statedict[i]
+        M_eff = M @ G
+        M_rorth, G = right_orthogonal_tensor(M_eff, max_bond_dim)
+        PsiR[i] = M_rorth
+    M = statedict[sites[-1]]
+    assert len(M.shape) == 2, "leftmost tensor must be a matrix."
+    M_eff = M @ G
+    PsiR[sites[-1]] = M_eff
+    return PsiR
 
 
 def right_canonicalize(statedict, rootL, rootR, diagonal=True):
