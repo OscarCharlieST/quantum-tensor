@@ -32,8 +32,8 @@ class mps:
         else:
             raise ValueError("Ms must be a list of tensors or a dictionary of sites:tensor.")
         self.sites = self.tensors.keys()
-        self.L = kwargs['L'] if 'L' in kwargs else np.eye(Ms[0].shape[1])
-        self.R = kwargs['R'] if 'R' in kwargs else np.eye(Ms[-1].shape[2])
+        # self.L = kwargs['L'] if 'L' in kwargs else np.eye(Ms[0].shape[1])
+        # self.R = kwargs['R'] if 'R' in kwargs else np.eye(Ms[-1].shape[2])
         self.centred = False
         self.bond_centred = False
         self.normalized = False
@@ -217,48 +217,6 @@ def left_canonicalize(statedict, rootL, rootR, diagonal=True):
         rootL_new = rootL_new @ v
         return PsiL, rootL_new, rootR_new
     
-<<<<<<< HEAD
-def left_canonicalize_compress(statedict, rootL, rootR, diagonal=True):
-    """
-    Left canonicalize an MPS Psi
-    Psi is assumed to have identity left and right environments.
-    If this isn't the case, just absorb the environments into the MPS.
-    """
-    sites = sorted(statedict.keys()) # sorted from left to right
-    PsiL = {}
-
-
-    first_site = sites[0]
-    first_tensor = statedict[first_site]
-    left_vec = np.ones(first_tensor.shape[1])
-    first_tensor = ncon((left_vec, first_tensor), ((1), (-1, 1, -2)))
-    U, S, Vh = la.svd(first_tensor, full_matrices=False)
-    first_tensor = U
-    PsiL[first_site] = first_tensor
-    statedict[sites[1]] = np.diag(S) @ Vh @ statedict[sites[1]]
-
-    for i in range(1, len(sites)):
-        site = sites[i]
-        M = statedict[site]
-        A, T = left_orthogonal(T @ M)
-        PsiL[i] = A
-    rootR = T @ np.sqrt(rootR) # incorporate the right environment
-    rootR_new = rootR / la.norm(rootR) # normalize
-    if not diagonal:
-        return PsiL, rootL_new, rootR_new
-    else:
-        # diagonalize the right environment
-        R = rootR_new @ rootR_new.conj().T
-        Rdiag, v = la.eig(R)
-        assert np.allclose(R, v @ np.diag(Rdiag) @ v.conj().T), "Eigen decomposition failed"
-        rootR_new = np.diag(np.sqrt(Rdiag))
-        # Absorb gauge transformations into the MPS tensors
-        for i in sites:
-            PsiL[i] = v.conj().T @ PsiL[i] @ v
-        # Apply the gauge transformations to the left environment
-        rootL_new = rootL_new @ v
-        return PsiL, rootL_new, rootR_new
-=======
 def left_canonicalize_compress(statedict, max_bond_dim):
     sites = sorted(statedict.keys())
     PsiL = {}
@@ -287,7 +245,6 @@ def left_canonicalize_compress(statedict, max_bond_dim):
     PsiL[sites[-1]] = M_eff
     return PsiL
 
->>>>>>> cfc87d611595f45648ee729c8d556fda6850d507
 
 def right_canonicalize(statedict, rootL, rootR, diagonal=True):
     """
