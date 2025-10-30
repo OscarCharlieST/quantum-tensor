@@ -216,6 +216,47 @@ def left_canonicalize(statedict, rootL, rootR, diagonal=True):
         # Apply the gauge transformations to the left environment
         rootL_new = rootL_new @ v
         return PsiL, rootL_new, rootR_new
+    
+def left_canonicalize_compress(statedict, rootL, rootR, diagonal=True):
+    """
+    Left canonicalize an MPS Psi
+    Psi is assumed to have identity left and right environments.
+    If this isn't the case, just absorb the environments into the MPS.
+    """
+    sites = sorted(statedict.keys()) # sorted from left to right
+    PsiL = {}
+
+
+    first_site = sites[0]
+    first_tensor = statedict[first_site]
+    left_vec = np.ones(first_tensor.shape[1])
+    first_tensor = ncon((left_vec, first_tensor), ((1), (-1, 1, -2)))
+    U, S, Vh = la.svd(first_tensor, full_matrices=False)
+    first_tensor = U
+    PsiL[first_site] = first_tensor
+    statedict[sites[1]] = np.diag(S) @ Vh @ statedict[sites[1]]
+
+    for i in range(1, len(sites)):
+        site = sites[i]
+        M = statedict[site]
+        A, T = left_orthogonal(T @ M)
+        PsiL[i] = A
+    rootR = T @ np.sqrt(rootR) # incorporate the right environment
+    rootR_new = rootR / la.norm(rootR) # normalize
+    if not diagonal:
+        return PsiL, rootL_new, rootR_new
+    else:
+        # diagonalize the right environment
+        R = rootR_new @ rootR_new.conj().T
+        Rdiag, v = la.eig(R)
+        assert np.allclose(R, v @ np.diag(Rdiag) @ v.conj().T), "Eigen decomposition failed"
+        rootR_new = np.diag(np.sqrt(Rdiag))
+        # Absorb gauge transformations into the MPS tensors
+        for i in sites:
+            PsiL[i] = v.conj().T @ PsiL[i] @ v
+        # Apply the gauge transformations to the left environment
+        rootL_new = rootL_new @ v
+        return PsiL, rootL_new, rootR_new
 
 def right_canonicalize(statedict, rootL, rootR, diagonal=True):
     """
