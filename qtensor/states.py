@@ -31,9 +31,9 @@ class mps:
             self.tensors = {i: M for i, M in enumerate(Ms)}
         else:
             raise ValueError("Ms must be a list of tensors or a dictionary of sites:tensor.")
-        self.sites = self.tensors.keys()
-        # self.L = kwargs['L'] if 'L' in kwargs else np.eye(Ms[0].shape[1])
-        # self.R = kwargs['R'] if 'R' in kwargs else np.eye(Ms[-1].shape[2])
+        self.sites = sorted(self.tensors.keys())
+        assert len(np.shape(self.tensors[self.sites[0]]))==2, "Leftmost tensor must be a matrix."
+        assert len(np.shape(self.tensors[self.sites[-1]]))==2, "Rightmost tensor must be a matrix."
         self.centred = False
         self.bond_centred = False
         self.normalized = False
@@ -64,61 +64,32 @@ class mps:
     def __len__(self):
         return len(self.tensors)
     
-    def left_canonical(self):
-        PsiL, L_new, R_new = left_canonicalize(self.tensors, self.L, self.R)
+    def left_orthogonal(self, max_bond_dim=np.inf):
+        PsiL = left_orthogonal_state(self.tensors, max_bond_dim)
         self.tensors = PsiL
         self.normalized = True
-        self.L = L_new  
-        self.R = R_new
-        self.bond_centred = True
-        self.centred = False
         self.form = 'left'
-        self.c_site = max(self.sites)
-        
-    def right_canonical(self):
-        PsiR, L_new, R_new = right_canonicalize(self.tensors, self.L, self.R)
+        self.centred = False
+        self.bond_centred = False
+    
+    def right_orthogonal(self, max_bond_dim=np.inf):
+        PsiR = right_orthogonal_state(self.tensors, max_bond_dim)
         self.tensors = PsiR
         self.normalized = True
-        self.L = L_new  
-        self.R = R_new
-        self.bond_centred = True
-        self.centred = False
         self.form = 'right'
-        self.c_site = min(self.sites)
+        self.centred = False
+        self.bond_centred = False
 
-    def centralize(self, c_site):
+    def centralize(self, c_site, max_bond_dim=np.inf):
         """
-        Centralize the MPS about the given site.
-        Fully right canonicalise.
-        Fully left canonicalise the MPS to the left of c_site.
-        Absorb remaining right environments into the center.
+        Centralize the MPS at site c_site.
         """
-        if c_site not in self.sites:
-            raise ValueError(f"Site {c_site} not in MPS.")
-        sites = sorted(self.sites)
-        left_state = {site: self.tensors[site] for site in sites if site < c_site}
-        right_state = {site: self.tensors[site] for site in sites if site > c_site}
-        centre_tensor = self.tensors[c_site]
-        d, Dl, Dr = centre_tensor.shape
-        if not self.form == 'left':
-            PsiL, L_lcan, R_lcan = left_canonicalize(left_state, self.L, np.eye(Dl), diagonal=False)
-        else:
-            PsiL, L_lcan, R_lcan = left_state, self.L, np.eye(Dl)
-        if not self.form == 'right':
-            PsiR, L_rcan, R_rcan = right_canonicalize(right_state, np.eye(Dr), self.R, diagonal=False)
-        else:
-            PsiR, L_rcan, R_rcan = right_state, np.eye(Dr), self.R
-        centre_tensor = R_lcan @ centre_tensor @ L_rcan
-        centre_tensor = centre_tensor / np.sqrt(
-            ncon((centre_tensor, centre_tensor.conj()), ((1, 2, 3), (1, 2, 3)))) # normalize
-        PsiC = {c_site: centre_tensor}
-        self.tensors = PsiL|PsiC|PsiR
-        self.L = L_lcan 
-        self.R = R_rcan 
-        self.centred = True
-        self.normalized = True
-        self.form = 'centre'
+        psi_centre = centralize_state(self.tensors, c_site, max_bond_dim)
+        self.tensors = psi_centre
         self.c_site = c_site
+        self.centred = True
+        self.bond_centred = False
+        self.form = 'center'
     
     def bond_centralize(self, side='right'):
         """
@@ -159,63 +130,6 @@ class mps:
             self.c_site += 0 # By convention, the bond is labeled according the site to it's left
             self.R = Ur @ self.R
             self.L = self.L @ Ul
-            
-def left_orthogonal(M):
-    """
-    Left orthogonalize an MPS tensor M using QR decomposition.
-    """
-    d, Dl, Dr = M.shape
-    M_mat = M.reshape(d*Dl, Dr)
-    Q, R = la.qr(M_mat, mode='economic')
-    A_new = Q.reshape(d, Dl, Dr)
-    return A_new, R
-
-def right_orthogonal(M): 
-    """
-    Right orthogonalize an MPS tensor M using RQ decomposition.
-    """
-    d, Dl, Dr = M.shape
-    M = ncon(M, (-2, -1, -3)) # swap the first two indices for reshaping
-    M_mat = M.reshape(Dl, d*Dr)
-    R, Q = la.rq(M_mat, mode='economic')
-    B_new = Q.reshape(Dl, d, Dr)
-    B_new = ncon(B_new, (-2, -1, -3)) # swap the first two indices back
-    return B_new, R
-
-def left_canonicalize(statedict, rootL, rootR, diagonal=True):
-    """
-    Left canonicalize an MPS Psi
-    Psi is assumed to have identity left and right environments.
-    If this isn't the case, just absorb the environments into the MPS.
-    """
-    sites = sorted(statedict.keys()) # sorted from left to right
-    PsiL = {}
-    for i in sites:
-        M = statedict[i]
-        if i == min(sites):
-            # If this is the first site, we can use the left environment directly:
-            A, T = left_orthogonal(rootL @ M)
-            PsiL[i] = A
-            rootL_new = np.eye(rootL.shape[0])
-        else:
-            A, T = left_orthogonal(T @ M)
-            PsiL[i] = A
-    rootR = T @ np.sqrt(rootR) # incorporate the right environment
-    rootR_new = rootR / la.norm(rootR) # normalize
-    if not diagonal:
-        return PsiL, rootL_new, rootR_new
-    else:
-        # diagonalize the right environment
-        R = rootR_new @ rootR_new.conj().T
-        Rdiag, v = la.eig(R)
-        assert np.allclose(R, v @ np.diag(Rdiag) @ v.conj().T), "Eigen decomposition failed"
-        rootR_new = np.diag(np.sqrt(Rdiag))
-        # Absorb gauge transformations into the MPS tensors
-        for i in sites:
-            PsiL[i] = v.conj().T @ PsiL[i] @ v
-        # Apply the gauge transformations to the left environment
-        rootL_new = rootL_new @ v
-        return PsiL, rootL_new, rootR_new
     
 def left_orthogonal_tensor(M, max_bond_dim):
     """
@@ -268,7 +182,9 @@ def left_orthogonal_state(statedict, max_bond_dim):
     # Handle rightmost tensor
     M = statedict[sites[-1]]
     assert len(M.shape) == 2, "rightmost tensor must be a matrix."
-    M_eff = G @ M.T
+    M_eff = (G @ M.T).T
+    norm = np.trace(M_eff @ M_eff.conj().T)
+    M_eff = M_eff / np.sqrt(norm) # normalize
     PsiL[sites[-1]] = M_eff
     return PsiL
 
@@ -319,44 +235,45 @@ def right_orthogonal_state(statedict, max_bond_dim):
     M = statedict[sites[-1]]
     assert len(M.shape) == 2, "leftmost tensor must be a matrix."
     M_eff = M @ G
+    norm = np.trace(M_eff.conj().T @ M_eff)
+    M_eff = M_eff / np.sqrt(norm)
     PsiR[sites[-1]] = M_eff
     return PsiR
 
+def centralize_state(statedict, c_site, max_bond_dim):
+    psi_centre = {}
 
-def right_canonicalize(statedict, rootL, rootR, diagonal=True):
-    """
-    Right canonicalize an MPS dictionary with {site: tensor} structure.
-    rootL and rootR are the (roots of) left and right environments, respectively.
-    """
-    sites = sorted(statedict.keys(), reverse=True) # sorted from right to left
-    PsiR = {}
-    for i in sites:
+    # Handle left side of chain
+    sites_l = sorted([i for i in statedict.keys() if i < c_site])
+    M = statedict[sites_l[0]]
+    U, s, V = la.svd(M, full_matrices=False)
+    psi_centre[sites_l[0]] = U
+    Gl = np.diag(s) @ V
+    for i in sites_l[1:]:
         M = statedict[i]
-        if i == max(sites):
-            # If this is the last site, we can use the right environment directly:
-            B, T = right_orthogonal(M @ rootR)
-            PsiR[i] = B
-            rootR_new = np.eye(rootR.shape[0])
-        else:
-            B, T = right_orthogonal(M @ T)
-            PsiR[i] = B
-    rootL = rootL @ T # incorporate the left environment
-    rootL_new = rootL / la.norm(rootL) # normalize
-    if not diagonal:
-        return PsiR, rootL_new, rootR_new
-    else:
-        # diagonalize the left environment
-        L = rootL_new.conj().T @ rootL_new
-        Ldiag, v = la.eig(L)
-        assert np.allclose(L, v @ np.diag(Ldiag) @ v.conj().T), "Eigen decomposition failed"
-        assert np.allclose(v.conj().T @ v, np.eye(v.shape[0])), "Eigenvectors are not orthonormal"
-        rootL_new = np.diag(np.sqrt(Ldiag))
-        # Absorb gauge transformations into the MPS tensors
-        for i in sites:
-            PsiR[i] = v.conj().T @ PsiR[i] @ v
-        # Apply the gauge transformations to the right environment
-        rootR_new = v.conj().T @ rootR_new
-        return PsiR, rootL_new, rootR_new
+        M_eff = Gl @ M
+        M_lorth, Gl = left_orthogonal_tensor(M_eff, max_bond_dim)
+        psi_centre[i] = M_lorth
+    
+    # Handle right side of chain
+    sites_r = sorted([i for i in statedict.keys() if i > c_site], reverse=True)
+    M = statedict[sites[0]]
+    U, s, V = la.svd(M.T, full_matrices=False)
+    psi_centre[sites[0]] = V.T
+    Gr = U @ np.diag(s)
+    for i in sites_r[1:]:
+        M = statedict[i]
+        M_eff = M @ Gr
+        M_rorth, Gr = right_orthogonal_tensor(M_eff, max_bond_dim)
+        psi_centre[i] = M_rorth
+
+    # Handle centre tensor and normalize
+    centre_tensor = Gl @ statedict[c_site] @ Gr
+    centre_tensor = centre_tensor / np.sqrt(
+        ncon((centre_tensor, centre_tensor.conj()), ((1, 2, 3), (1, 2, 3)))) # normalize
+    psi_centre[c_site] = centre_tensor
+    
+    return psi_centre
 
 def shift_centre_r(C, B):
     """
@@ -401,12 +318,13 @@ def overlap(state_1, state_2):
     Compute inner product between two states
     """
     assert sorted(state_1.sites) == sorted(state_2.sites), "States need to be on the same lattice."
-    L = state_2.L.conj().T @ state_1.L
-    R = state_1.R @ state_2.R.conj().T
-    for site in sorted(state_1.sites):
-        L = ncon((L, state_1[site], state_2[site].conj()),
-                 ((1, 2), (3, 1, -1), (3, 2, -2)))
-    return np.sqrt(np.trace(L @ R))
+    sites = sorted(state_1.sites)
+    L = state_2[sites[0]].conj().T @ state_1[sites[0]]
+    R = state_1[sites[-1]].T @ state_2[sites[-1]].conj()
+    for i in sites[1:-1]:
+        L = ncon((L, state_1[i], state_2[i].conj()),
+                 ((1, 2), (3, 2, -2), (3, 1, -1)))
+    return np.trace(L @ R)
 
 def partite_entropy(state, site):
     """
@@ -423,8 +341,21 @@ def partite_entropy(state, site):
     return -np.log(purity)
 
 def random_mps(N, d, D, seed=0):
+    """
+    Unnormalized random MPS state generator
+    """
+    r = np.sqrt(2*D*d) # rough normalization factor
     np.random.seed(seed)
-    As = []
+    statedict = {}
+    sites = np.arange(N)
+    statedict[sites[0]] = (np.random.normal(size=(d, D)) + 1j*np.random.normal(size=(d, D)))/r
+    for i in sites[1:-1]:
+        statedict[i] = (np.random.normal(size=(d, D, D)) + 1j*np.random.normal(size=(d, D, D)))/r
+    statedict[sites[-1]] = (np.random.normal(size=(d, D)) + 1j*np.random.normal(size=(d, D)))/r
+    state = mps(statedict)
+    return state
+
+
     for i in range(N):
         A = np.random.rand(d, D, D) + 1j*np.random.rand(d, D, D)
         As.append(A)
