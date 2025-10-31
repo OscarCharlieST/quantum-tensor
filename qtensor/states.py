@@ -257,9 +257,9 @@ def centralize_state(statedict, c_site, max_bond_dim):
     
     # Handle right side of chain
     sites_r = sorted([i for i in statedict.keys() if i > c_site], reverse=True)
-    M = statedict[sites[0]]
+    M = statedict[sites_r[0]]
     U, s, V = la.svd(M.T, full_matrices=False)
-    psi_centre[sites[0]] = V.T
+    psi_centre[sites_r[0]] = V.T
     Gr = U @ np.diag(s)
     for i in sites_r[1:]:
         M = statedict[i]
