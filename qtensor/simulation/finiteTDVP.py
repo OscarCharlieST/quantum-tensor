@@ -72,7 +72,29 @@ def tdvp(state, operator, t_f, steps, method,
 
     if verbose:
         print('TDVP finished!')
-    return state_history, expectations
+    return state_history, expectations    
+
+def tdvp_new(state, operator, t_f, steps, method):
+    times = np.linspace(0, t_f, steps+1)
+    dt = t_f/steps
+    R_con = right_mpo_contractions_new(state, operator)
+    state_history = {}
+    expectations = {}
+    for t in times:
+        if verbose:
+            print(f't: {t:.3f}')
+        if history:
+            now_state = copy.copy(state)
+            state_history[t] = now_state   
+        if 'operators' in kwargs:
+            expectations[t] = [local_expect(state, op) for op in kwargs['operators']]
+            
+        L_con = {min(state.sites)-1: 
+                ncon((state.L.conj().T @ state.L , operator.l), ((-1, -2), (-3,)))}
+        state, L_con, _ = tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method)
+        R_con = {max(state.sites)+1: 
+                ncon((state.R @ state.R.conj().T , operator.r), ((-1, -2), (-3,)))}
+        state, _, R_con = tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method)    
 
 def right_mpo_contractions(state, operator):
     """
@@ -100,6 +122,17 @@ def right_mpo_contractions(state, operator):
         else:
             W = operator[site]
         R_con[site] = contract_right(R_right, A, W)
+    return R_con
+
+def right_mpo_contractions_new(state, operator):
+    sites = sorted(state.sites, reverse=True)
+    R_con = {}
+    site = sites[0]
+    R_con[site] = ncon((state[site], state[site].conj(), operator[site], operator.r),
+                       ((1, -1), (2, -2), (1, 2, -3, 3), (3,)))
+    for site in sites[1:-1]:
+        R_con[site] = ncon((state[site], state[site].conj(), operator[site], R_con[site+1]),
+                           ((3, -1, 1), (4, -2, 2), (3, 4, -3, 5), (1, 2, 5)))
     return R_con
 
 def tdvp_step_r(state, operator, dt, L_con, R_con, method):
@@ -167,6 +200,53 @@ def tdvp_sweep_r(state, operator, dt, L_con, R_con, method):
         R_con: updated right contractions dictionary
     """
     assert state.form == 'right', "MPS needs to be right canonicalized before TDVP sweep."
+    state[state.c_site] = state.L @ state[state.c_site]  # absorb the left environment into the first site tensor
+    state.L = np.eye(state[state.c_site].shape[1])  # reset the left environment to identity
+    state.form = 'centre'  # set the form to centre after absorbing the left environment
+    while state.form == 'centre':
+        state, L_con, R_con = tdvp_step_r(state, operator, dt, L_con, R_con, method)
+    return state, L_con, R_con
+
+def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
+    """
+    Perform a TDVP sweep to the right.
+    Inputs:
+        state: mps object
+        operator: mpo object
+        dt: time step
+        L_con: left contractions dictionary
+        R_con: right contractions dictionary
+    Outputs:
+        state: updated mps object
+        L_con: updated left contractions dictionary
+        R_con: updated right contractions dictionary
+    """
+    assert state.form == 'right', "MPS needs to be right canonicalized before TDVP sweep."
+
+    sites = sorted(state.sites)
+    current_site = sites[0]
+    current_op = ncon((operator.l, operator[current_site]),
+                      ((1,), (-1, -2, 1, -3)))
+    H_eff = ncon((current_op, R_con[current_site+1]),
+                 ((-1, -3, 2), (-2, -4, 2))) # effective hamiltonian for first site
+    M = method(state[current_site], H_eff, dt)
+    M = M / la.norm(M)
+    A_new, C_new = left_orthogonal(M)
+    state[current_site] = A_new
+    L_con[current_site] = ncon((A_new, A_new.conj(), current_op), 
+                               ((1, -1), (2, -2), (1, 2, -3)))
+    # update C tensor
+    H_eff_bond = ncon((L_con[current_site], R_con[current_site+1]), 
+                      ((-1, -3, 1), (-2, -4, 1)))
+    C_new = method(C_new, H_eff_bond, dt)
+    C_new = C_new / la.norm(C_new)
+    state[current_site+1] = C_new @ state[current_site+1]
+    state.c_site += 1  # shift the centre to the right
+    #
+    for site in sites[1:-1]:
+        state, L_con, R_con = tdvp_step_r(state, operator, dt, L_con, R_con, method)
+    
+
     state[state.c_site] = state.L @ state[state.c_site]  # absorb the left environment into the first site tensor
     state.L = np.eye(state[state.c_site].shape[1])  # reset the left environment to identity
     state.form = 'centre'  # set the form to centre after absorbing the left environment
