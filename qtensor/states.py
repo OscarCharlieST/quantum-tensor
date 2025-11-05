@@ -49,15 +49,13 @@ class mps:
         self.tensors[position] = tensor
 
     def __copy__(self):
-        new_instance = mps(copy.copy(self.tensors), L=copy.copy(self.L), R=copy.copy(self.R))
+        new_instance = mps(copy.copy(self.tensors))
         new_instance.form = copy.copy(self.form)
         new_instance.c_site = copy.copy(self.c_site)
         return new_instance
     
     def __deepcopy__(self, memo):
-        new_instance = mps(copy.deepcopy(self.tensors, memo), 
-                           L=copy.deepcopy(self.L, memo), 
-                           R=copy.deepcopy(self.R, memo))
+        new_instance = mps(copy.deepcopy(self.tensors, memo))
         new_instance.form = copy.copy(self.form)
         new_instance.c_site = copy.copy(self.c_site)
         return new_instance
@@ -191,7 +189,7 @@ def left_orthogonal_state(statedict, max_bond_dim):
     PsiL[sites[-1]] = M_eff
     return PsiL
 
-def right_orthogonal_tensor(M, max_bond_dim):
+def right_orthogonal_tensor(M, max_bond_dim=np.inf):
     """
     Right orthogonalize and compress a MPS tensor
 

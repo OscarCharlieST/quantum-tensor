@@ -74,7 +74,8 @@ def tdvp(state, operator, t_f, steps, method,
         print('TDVP finished!')
     return state_history, expectations    
 
-def tdvp_new(state, operator, t_f, steps, method):
+def tdvp_new(state, operator, t_f, steps, method,
+             history=False, verbose=False, **kwargs):
     times = np.linspace(0, t_f, steps+1)
     dt = t_f/steps
     R_con = right_mpo_contractions_new(state, operator)
@@ -87,14 +88,15 @@ def tdvp_new(state, operator, t_f, steps, method):
             now_state = copy.copy(state)
             state_history[t] = now_state   
         if 'operators' in kwargs:
-            expectations[t] = [local_expect(state, op) for op in kwargs['operators']]
+            expectations[t] = [ops.local_expect(state, op) for op in kwargs['operators']]
             
-        L_con = {min(state.sites)-1: 
-                ncon((state.L.conj().T @ state.L , operator.l), ((-1, -2), (-3,)))}
+        L_con = {}
         state, L_con, _ = tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method)
-        R_con = {max(state.sites)+1: 
-                ncon((state.R @ state.R.conj().T , operator.r), ((-1, -2), (-3,)))}
+        R_con = {}
         state, _, R_con = tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method)    
+    if verbose:
+        print('TDVP finished!')
+    return state_history, expectations 
 
 def right_mpo_contractions(state, operator):
     """
