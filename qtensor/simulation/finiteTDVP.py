@@ -204,6 +204,25 @@ def tdvp_step_l(state, operator, dt, L_con, R_con, method):
         state.form = 'right'
     return state, L_con, R_con # not sure about best implementation for returning things...
 
+def tdvp_step_l_new(state, operator, dt, L_con, R_con, method):
+    c_site = state.c_site
+    M = state[c_site]
+    H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
+                 ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
+    M_new = method(M, H_eff, dt)
+    M_new = M_new / la.norm(M_new)  # normalize the new tensor
+    C_new, B_new = states.right_orthogonal_tensor(M_new)
+    state[c_site] = B_new
+    L_con[c_site] = ops.contract_left(L_con[c_site-1], B_new, operator[c_site])
+    
+    H_eff_bond = ncon((L_con[c_site], R_con[c_site+1]), ((-1, -3, 1), (-2, -4, 1)))
+    C_new = method(C_new, H_eff_bond, -dt)
+
+    C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
+    state[c_site-1] = state[c_site-1] @ C_new  # update the next site tensor
+    state.c_site -= 1  # shift the centre to the right
+
+    return state, L_con, R_con
 
 def tdvp_sweep_r(state, operator, dt, L_con, R_con, method):
     """
@@ -227,7 +246,7 @@ def tdvp_sweep_r(state, operator, dt, L_con, R_con, method):
         state, L_con, R_con = tdvp_step_r(state, operator, dt, L_con, R_con, method)
     return state, L_con, R_con
 
-def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method=method_exact_new):
+def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
     """
     Perform a TDVP sweep to the right.
     Inputs:
@@ -246,16 +265,19 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method=method_exact_new)
 
     # Update leftmost tensor
     current_site = sites[0]
+    print(f"Updating site {state.c_site}")
     current_op = ncon((operator.l, operator[current_site]),
                       ((1,), (-1, -2, 1, -3)))
     H_eff = ncon((current_op, R_con[current_site+1]),
                  ((-1, -3, 2), (-2, -4, 2))) # effective hamiltonian for first site
     M = method(state[current_site], H_eff, dt)
     M = M / la.norm(M)
-    A_new, C_new = state.left_orthogonal_tensor(M)
+    A_new, s, V = la.svd(M, full_matrices=False)
+    C_new = np.diag(s) @ V
     state[current_site] = A_new
     L_con[current_site] = ncon((A_new, A_new.conj(), current_op), 
                                ((1, -1), (2, -2), (1, 2, -3)))
+    
     # Update C tensor
     H_eff_bond = ncon((L_con[current_site], R_con[current_site+1]), 
                       ((-1, -3, 1), (-2, -4, 1)))
@@ -266,11 +288,13 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method=method_exact_new)
     
     # Update bulk
     for site in sites[1:-1]:
+        print(f"Updating site {state.c_site}")
         state, L_con, R_con = tdvp_step_r_new(state, operator, dt, L_con, R_con, method)
     
     # Update rightmost tensor
     assert state.c_site == sites[-1], "Centre isn't at right of chain somehow"
     current_site = sites[-1]
+    print(f"Updating site {state.c_site}")
     H_eff = ncon((L_con[state.c_site-1], operator[state.c_site], operator.r),
                  ((-2, -4, 1), (-1, -3, 1, 2), (2,)))
     M = method(state[current_site], H_eff, dt)
@@ -278,6 +302,64 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method=method_exact_new)
     state[current_site] = M
 
     return state, L_con, R_con
+
+def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
+    """
+    Perform a TDVP sweep to the left.
+    Inputs:
+        state: mps object
+        operator: mpo object
+        dt: time step
+        L_con: left contractions dictionary
+        R_con: right contractions dictionary
+    Outputs:
+        state: updated mps object
+        L_con: updated left contractions dictionary
+        R_con: updated right contractions dictionary
+    """
+    assert state.c_site == np.max(state.sites), "Centre must be at right of chain."
+    sites = sorted(state.sites, reverse=True)
+
+    # Update rightmost tensor
+    current_site = sites[0]
+    print(f"Updating site {state.c_site}")
+    current_op = ncon((operator[current_site], operator.r),
+                      ((-1, -2, -3, 1), (1,)))
+    H_eff = ncon((L_con[current_site-1], current_op),
+                 ((-2, -4, 1), (-1, -3, 1))) # effective hamiltonian for last site
+    M = method(state[current_site], H_eff, dt)
+    M = M / la.norm(M)
+    B_new, s, V = la.svd(M, full_matrices=False)
+    C_new = B_new @ np.diag(s)
+    state[current_site] = V.T
+    R_con[current_site] = ncon((B_new.conj(), B_new, current_op), 
+                               ((2, -1), (1, -2), (1, 2, -3)))
+    
+    # Update C tensor
+    H_eff_bond = ncon((L_con[current_site-1], R_con[current_site]), 
+                      ((-1, -3, 1), (-2, -4, 1)))
+    C_new = method(C_new, H_eff_bond, -dt)
+    C_new = C_new / la.norm(C_new)
+    state[current_site-1] = state[current_site-1] @ C_new
+    state.c_site -= 1  # shift the centre to the left
+    
+    # Update bulk
+    for site in sites[1:-1]:
+        print(f"Updating site {state.c_site}")
+        state, L_con, R_con = tdvp_step_l_new(state, operator, dt, L_con, R_con, method)
+    
+    # Update leftmost tensor
+    assert state.c_site == state.sites[0], "Centre isn't at left of chain somehow"
+    current_site = sites[-1]
+    print(f"Updating site {state.c_site}")
+    H_eff = ncon((operator.l, operator[state.c_site], R_con[state.c_site-1]),
+                 ((1,), (-1, -3, 1, 2), (-2, -4, 2)))
+    M = method(state[current_site], H_eff, dt)
+    M = M / la.norm(M)
+    state[current_site] = M
+
+    return state, L_con, R_con
+
 
 
 def tdvp_sweep_l(state, operator, dt, L_con, R_con, method):
@@ -351,11 +433,11 @@ def method_exact(tensor, H_eff, dt, **kwargs):
 def method_exact_new(tensor, H_eff, dt):
     # Calculate dimension of the space the vectorized tensor lives in
     vector_dim = np.product(tensor.shape)
+    tensor_vec = tensor.flatten()
     # Reshape H_eff to be square matrix in vectorised space
     H_eff_mat = H_eff.reshape((vector_dim, vector_dim))
     mat_exp = la.expm(-0.5*1j*dt*H_eff_mat)
-    exp_H_eff = mat_exp.reshape(H_eff.shape)
-    tensor_evolved = tensor @ exp_H_eff
+    tensor_evolved = tensor_vec @ mat_exp
     return tensor_evolved.reshape(tensor.shape)
 
 

@@ -38,6 +38,7 @@ class mps:
         self.bond_centred = False
         self.normalized = False
         self.form = 'none'
+        self.c_site= None
 
     def __getitem__(self, position):
         return self.tensors[position]
@@ -71,6 +72,7 @@ class mps:
         self.form = 'left'
         self.centred = False
         self.bond_centred = False
+        self.c_site = self.sites[-1]
     
     def right_orthogonal(self, max_bond_dim=np.inf):
         PsiR = right_orthogonal_state(self.tensors, max_bond_dim)
@@ -79,6 +81,7 @@ class mps:
         self.form = 'right'
         self.centred = False
         self.bond_centred = False
+        self.c_site = self.sites[0]
 
     def centralize(self, c_site, max_bond_dim=np.inf):
         """
@@ -131,7 +134,7 @@ class mps:
             self.R = Ur @ self.R
             self.L = self.L @ Ul
     
-def left_orthogonal_tensor(M, max_bond_dim):
+def left_orthogonal_tensor(M, max_bond_dim=np.inf):
     """
     Left orthogonalize and compress a MPS tensor
 
@@ -206,7 +209,7 @@ def right_orthogonal_tensor(M, max_bond_dim):
     M_trans_lorth, G_trans = left_orthogonal_tensor(M_trans, max_bond_dim)
     M_rorth = ncon(M_trans_lorth, (-1, -3, -2))
     G = G_trans.T
-    return M_rorth, G
+    return G, M_rorth
     
 def right_orthogonal_state(statedict, max_bond_dim):
     """
@@ -230,7 +233,7 @@ def right_orthogonal_state(statedict, max_bond_dim):
     for i in sites[1:-1]:
         M = statedict[i]
         M_eff = M @ G
-        M_rorth, G = right_orthogonal_tensor(M_eff, max_bond_dim)
+        G, M_rorth = right_orthogonal_tensor(M_eff, max_bond_dim)
         PsiR[i] = M_rorth
     M = statedict[sites[-1]]
     assert len(M.shape) == 2, "leftmost tensor must be a matrix."
