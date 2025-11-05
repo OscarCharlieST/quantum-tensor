@@ -213,9 +213,9 @@ def tdvp_step_l_new(state, operator, dt, L_con, R_con, method):
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
     C_new, B_new = states.right_orthogonal_tensor(M_new)
     state[c_site] = B_new
-    L_con[c_site] = ops.contract_left(L_con[c_site-1], B_new, operator[c_site])
+    R_con[c_site] = ops.contract_right(R_con[c_site+1], B_new, operator[c_site])
     
-    H_eff_bond = ncon((L_con[c_site], R_con[c_site+1]), ((-1, -3, 1), (-2, -4, 1)))
+    H_eff_bond = ncon((L_con[c_site-1], R_con[c_site]), ((-1, -3, 1), (-2, -4, 1)))
     C_new = method(C_new, H_eff_bond, -dt)
 
     C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
@@ -329,11 +329,12 @@ def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
                  ((-2, -4, 1), (-1, -3, 1))) # effective hamiltonian for last site
     M = method(state[current_site], H_eff, dt)
     M = M / la.norm(M)
-    B_new, s, V = la.svd(M, full_matrices=False)
-    C_new = B_new @ np.diag(s)
-    state[current_site] = V.T
-    R_con[current_site] = ncon((B_new.conj(), B_new, current_op), 
-                               ((2, -1), (1, -2), (1, 2, -3)))
+    U, s, V = la.svd(M, full_matrices=False)
+    B_new = V.T
+    C_new = U @ np.diag(s)
+    state[current_site] = B_new.T
+    R_con[current_site] = ncon((B_new, B_new.conj(), current_op), 
+                               ((1, -1), (2, -2), (1, 2, -3)))
     
     # Update C tensor
     H_eff_bond = ncon((L_con[current_site-1], R_con[current_site]), 
@@ -352,7 +353,7 @@ def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
     assert state.c_site == state.sites[0], "Centre isn't at left of chain somehow"
     current_site = sites[-1]
     print(f"Updating site {state.c_site}")
-    H_eff = ncon((operator.l, operator[state.c_site], R_con[state.c_site-1]),
+    H_eff = ncon((operator.l, operator[state.c_site], R_con[state.c_site+1]),
                  ((1,), (-1, -3, 1, 2), (-2, -4, 2)))
     M = method(state[current_site], H_eff, dt)
     M = M / la.norm(M)
