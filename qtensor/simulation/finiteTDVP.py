@@ -8,8 +8,8 @@ from numba import njit
 from numba.typed import List
 import time
 
-from qtensor.states import *
-from qtensor.operators import *
+import qtensor.states as states
+import qtensor.operators as ops
 
 
 """ 
@@ -145,9 +145,9 @@ def tdvp_step_r(state, operator, dt, L_con, R_con, method):
     M_new = method(M, H_eff, dt)
 
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
-    A_new, C_new = left_orthogonal(M_new)
+    A_new, C_new = states.left_orthogonal(M_new)
     state[c_site] = A_new  # update the centre tensor, now left-orthogonal
-    L_con[c_site] = contract_left(L_con[c_site-1], A_new, operator[c_site])
+    L_con[c_site] = states.contract_left(L_con[c_site-1], A_new, operator[c_site])
     if not c_site == max(state.sites):
         H_eff_bond = ncon((L_con[c_site], R_con[c_site+1]), ((-1, -3, 1), (-2, -4, 1)))
         C_new = method(C_new, H_eff_bond, -dt)
@@ -159,6 +159,26 @@ def tdvp_step_r(state, operator, dt, L_con, R_con, method):
         state.R = C_new @ state.R 
         state.form = 'left'
     return state, L_con, R_con # not sure about best implementation for returning things...
+
+def tdvp_step_r_new(state, operator, dt, L_con, R_con, method):
+    c_site = state.c_site
+    M = state[c_site]
+    H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
+                 ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
+    M_new = method(M, H_eff, dt)
+    M_new = M_new / la.norm(M_new)  # normalize the new tensor
+    A_new, C_new = states.left_orthogonal_tensor(M_new)
+    state[c_site] = A_new  # update the centre tensor, now left-orthogonal
+    L_con[c_site] = ops.contract_left(L_con[c_site-1], A_new, operator[c_site])
+    
+    H_eff_bond = ncon((L_con[c_site], R_con[c_site+1]), ((-1, -3, 1), (-2, -4, 1)))
+    C_new = method(C_new, H_eff_bond, -dt)
+
+    C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
+    state[c_site+1] = C_new @ state[c_site+1]  # update the next site tensor
+    state.c_site += 1  # shift the centre to the right
+
+    return state, L_con, R_con
 
 def tdvp_step_l(state, operator, dt, L_con, R_con, method):
     c_site = state.c_site
@@ -207,7 +227,7 @@ def tdvp_sweep_r(state, operator, dt, L_con, R_con, method):
         state, L_con, R_con = tdvp_step_r(state, operator, dt, L_con, R_con, method)
     return state, L_con, R_con
 
-def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
+def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method=method_exact_new):
     """
     Perform a TDVP sweep to the right.
     Inputs:
@@ -222,8 +242,9 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
         R_con: updated right contractions dictionary
     """
     assert state.form == 'right', "MPS needs to be right canonicalized before TDVP sweep."
-
     sites = sorted(state.sites)
+
+    # Update leftmost tensor
     current_site = sites[0]
     current_op = ncon((operator.l, operator[current_site]),
                       ((1,), (-1, -2, 1, -3)))
@@ -231,27 +252,31 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
                  ((-1, -3, 2), (-2, -4, 2))) # effective hamiltonian for first site
     M = method(state[current_site], H_eff, dt)
     M = M / la.norm(M)
-    A_new, C_new = left_orthogonal(M)
+    A_new, C_new = state.left_orthogonal_tensor(M)
     state[current_site] = A_new
     L_con[current_site] = ncon((A_new, A_new.conj(), current_op), 
                                ((1, -1), (2, -2), (1, 2, -3)))
-    # update C tensor
+    # Update C tensor
     H_eff_bond = ncon((L_con[current_site], R_con[current_site+1]), 
                       ((-1, -3, 1), (-2, -4, 1)))
-    C_new = method(C_new, H_eff_bond, dt)
+    C_new = method(C_new, H_eff_bond, -dt)
     C_new = C_new / la.norm(C_new)
     state[current_site+1] = C_new @ state[current_site+1]
     state.c_site += 1  # shift the centre to the right
-    #
-    for site in sites[1:-1]:
-        state, L_con, R_con = tdvp_step_r(state, operator, dt, L_con, R_con, method)
     
+    # Update bulk
+    for site in sites[1:-1]:
+        state, L_con, R_con = tdvp_step_r_new(state, operator, dt, L_con, R_con, method)
+    
+    # Update rightmost tensor
+    assert state.c_site == sites[-1], "Centre isn't at right of chain somehow"
+    current_site = sites[-1]
+    H_eff = ncon((L_con[state.c_site-1], operator[state.c_site], operator.r),
+                 ((-2, -4, 1), (-1, -3, 1, 2), (2,)))
+    M = method(state[current_site], H_eff, dt)
+    M = M / la.norm(M)
+    state[current_site] = M
 
-    state[state.c_site] = state.L @ state[state.c_site]  # absorb the left environment into the first site tensor
-    state.L = np.eye(state[state.c_site].shape[1])  # reset the left environment to identity
-    state.form = 'centre'  # set the form to centre after absorbing the left environment
-    while state.form == 'centre':
-        state, L_con, R_con = tdvp_step_r(state, operator, dt, L_con, R_con, method)
     return state, L_con, R_con
 
 
@@ -322,6 +347,17 @@ def method_exact(tensor, H_eff, dt, **kwargs):
                     ((1, 2), (1, 2, -1, -2)))
     else:
         raise ValueError("Tensor shape not compatible with 1site tdvp")
+    
+def method_exact_new(tensor, H_eff, dt):
+    # Calculate dimension of the space the vectorized tensor lives in
+    vector_dim = np.product(tensor.shape)
+    # Reshape H_eff to be square matrix in vectorised space
+    H_eff_mat = H_eff.reshape((vector_dim, vector_dim))
+    mat_exp = la.expm(-0.5*1j*dt*H_eff_mat)
+    exp_H_eff = mat_exp.reshape(H_eff.shape)
+    tensor_evolved = tensor @ exp_H_eff
+    return tensor_evolved.reshape(tensor.shape)
+
 
 def method_fast(tensor, H_eff, dt, **kwargs):
     """
