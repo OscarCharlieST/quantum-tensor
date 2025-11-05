@@ -267,7 +267,6 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
 
     # Update leftmost tensor
     current_site = sites[0]
-    print(f"Updating site {state.c_site}")
     current_op = ncon((operator.l, operator[current_site]),
                       ((1,), (-1, -2, 1, -3)))
     H_eff = ncon((current_op, R_con[current_site+1]),
@@ -290,13 +289,11 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
     
     # Update bulk
     for site in sites[1:-1]:
-        print(f"Updating site {state.c_site}")
         state, L_con, R_con = tdvp_step_r_new(state, operator, dt, L_con, R_con, method)
     
     # Update rightmost tensor
     assert state.c_site == sites[-1], "Centre isn't at right of chain somehow"
     current_site = sites[-1]
-    print(f"Updating site {state.c_site}")
     H_eff = ncon((L_con[state.c_site-1], operator[state.c_site], operator.r),
                  ((-2, -4, 1), (-1, -3, 1, 2), (2,)))
     M = method(state[current_site], H_eff, dt)
@@ -324,7 +321,6 @@ def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
 
     # Update rightmost tensor
     current_site = sites[0]
-    print(f"Updating site {state.c_site}")
     current_op = ncon((operator[current_site], operator.r),
                       ((-1, -2, -3, 1), (1,)))
     H_eff = ncon((L_con[current_site-1], current_op),
@@ -348,13 +344,11 @@ def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
     
     # Update bulk
     for site in sites[1:-1]:
-        print(f"Updating site {state.c_site}")
         state, L_con, R_con = tdvp_step_l_new(state, operator, dt, L_con, R_con, method)
     
     # Update leftmost tensor
     assert state.c_site == state.sites[0], "Centre isn't at left of chain somehow"
     current_site = sites[-1]
-    print(f"Updating site {state.c_site}")
     H_eff = ncon((operator.l, operator[state.c_site], R_con[state.c_site+1]),
                  ((1,), (-1, -3, 1, 2), (-2, -4, 2)))
     M = method(state[current_site], H_eff, dt)
