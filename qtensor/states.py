@@ -63,6 +63,12 @@ class mps:
     def __len__(self):
         return len(self.tensors)
     
+    def L(self):
+        return self.tensors[min(self.sites)]
+    
+    def R(self):
+        return self.tensors[max(self.sites)]
+    
     def left_orthogonal(self, max_bond_dim=np.inf):
         PsiL = left_orthogonal_state(self.tensors, max_bond_dim)
         self.tensors = PsiL
@@ -242,8 +248,13 @@ def right_orthogonal_state(statedict, max_bond_dim):
     return PsiR
 
 def centralize_state(statedict, c_site, max_bond_dim):
+    # If centre at edge of chain, just orthogonalise 
+    if c_site == max(statedict.keys()):
+        return left_orthogonal_state(statedict, max_bond_dim)
+    if c_site == min(statedict.keys()):
+        return right_orthogonal_state(statedict, max_bond_dim)
+    
     psi_centre = {}
-
     # Handle left side of chain
     sites_l = sorted([i for i in statedict.keys() if i < c_site])
     M = statedict[sites_l[0]]
@@ -265,7 +276,7 @@ def centralize_state(statedict, c_site, max_bond_dim):
     for i in sites_r[1:]:
         M = statedict[i]
         M_eff = M @ Gr
-        M_rorth, Gr = right_orthogonal_tensor(M_eff, max_bond_dim)
+        Gr, M_rorth = right_orthogonal_tensor(M_eff, max_bond_dim)
         psi_centre[i] = M_rorth
 
     # Handle centre tensor and normalize
@@ -354,12 +365,4 @@ def random_mps(N, d, D, seed=0):
         statedict[i] = (np.random.normal(size=(d, D, D)) + 1j*np.random.normal(size=(d, D, D)))/r
     statedict[sites[-1]] = (np.random.normal(size=(d, D)) + 1j*np.random.normal(size=(d, D)))/r
     state = mps(statedict)
-    return state
-
-
-    for i in range(N):
-        A = np.random.rand(d, D, D) + 1j*np.random.rand(d, D, D)
-        As.append(A)
-    state = mps(As)
-    state.right_canonical()
     return state

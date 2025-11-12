@@ -386,9 +386,9 @@ def gs_evolve(psi, H, t_f=1000, steps=100):
     Given an intial state and a hamiltonian, approximate the ground state
     by imaginary time tdvp
     """
-    print("Intial energy:", expect(psi, H))
-    _, _ = tdvp(psi, H, -1j*t_f, steps, method_fast)
-    print("Final energy:", expect(psi, H))
+    print("Intial energy:", ops.expect(psi, H))
+    _, _ = tdvp_new(psi, H, -1j*t_f, steps, method_fast_new)
+    print("Final energy:", ops.expect(psi, H))
     return psi
 
 def inf_T_thermofield_variational(N, D, t_f=1000, steps=100, state=None, seed=0):
@@ -403,11 +403,14 @@ def inf_T_thermofield_variational(N, D, t_f=1000, steps=100, state=None, seed=0)
     W[:, :, 1, 1] = np.eye(4)
     l = np.array([1, 0])
     r = np.array([0, 1])
-    H_gs = uniform_MPO(W, l, r, N)
+    H_gs = ops.uniform_MPO(W, l, r, N)
     if not state:
-        state = random_mps(N, 4, D, seed=seed)
+        state = states.random_mps(N, 4, D, seed=seed)
+    state.right_orthogonal()
     state = gs_evolve(state, H_gs, t_f, steps)
     return state
+
+    
 
 def method_exact(tensor, H_eff, dt, **kwargs):
     """
@@ -435,6 +438,17 @@ def method_exact_new(tensor, H_eff, dt):
     H_eff_mat = H_eff.reshape((vector_dim, vector_dim))
     mat_exp = la.expm(-0.5*1j*dt*H_eff_mat)
     tensor_evolved = tensor_vec @ mat_exp
+    return tensor_evolved.reshape(tensor.shape)
+
+def method_fast_new(tensor, H_eff, dt):
+    # Calculate dimension of the space the vectorized tensor lives in
+    vector_dim = np.product(tensor.shape)
+    tensor_vec = tensor.flatten()
+    # Reshape H_eff to be square matrix in vectorised space
+    H_eff_mat = H_eff.reshape((vector_dim, vector_dim))
+    # mat_exp = la.expm(-0.5*1j*dt*H_eff_mat)
+    # tensor_evolved = tensor_vec @ mat_exp
+    tensor_evolved = tensor_vec + tensor_vec @ (-0.5*1j*dt*H_eff_mat)
     return tensor_evolved.reshape(tensor.shape)
 
 

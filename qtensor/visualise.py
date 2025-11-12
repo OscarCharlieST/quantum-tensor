@@ -7,7 +7,8 @@ import numpy as np
 
 def plot_energy_density(state, H_terms):
     fig, ax = plt.subplots(1,1)
-    energy_density = [ops.local_expect(state, term) for term in H_terms]
+    energy_density = [ops.local_expect(state, H_terms[i]) 
+                      for i in sorted(H_terms.keys())]
     ax.plot(list(state.sites)[:-1], energy_density)
     ax.set_ylabel(r'$E$')
     ax.set_xlabel('Bond')
