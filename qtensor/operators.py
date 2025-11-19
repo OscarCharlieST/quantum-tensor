@@ -309,23 +309,23 @@ def local_expect(state, operator):
     r = operator.r 
 
     if min(state.sites) in operator.sites:
-        r_dim = state[max(operator.sites)].shape[2]
+        r_dim = state_copy[max(operator.sites)].shape[2]
         R = ncon((np.eye(r_dim), r), ((-1, -2), (-3,)))
         L = ncon((state_copy.L(), state_copy.L().conj(), operator[min(state.sites)], operator.l),
                  ((1, -1), (2, -2), (1, 2, 3, -3), (3,)))
         for i in sorted(operator.sites)[1:]:
             L = contract_left(L, state_copy[i], operator[i])
     elif max(state.sites) in operator.sites:
-        l_dim = state[min(operator.sites)].shape[1]
+        l_dim = state_copy[min(operator.sites)].shape[1]
         L = ncon((np.eye(l_dim), l), ((-1, -2), (-3,)))
         R = ncon((state_copy.R(), state_copy.R().conj(), operator[max(state.sites)], operator.r),
                  ((1, -1), (2, -2), (1, 2, -3, 3), (3,)))
         for i in sorted(operator.sites)[:-1]:
             R = contract_right(R, state_copy[i], operator[i])
     else:
-        l_dim = state[min(operator.sites)].shape[1]
+        l_dim = state_copy[min(operator.sites)].shape[1]
         L = ncon((np.eye(l_dim), l), ((-1, -2), (-3,)))
-        r_dim = state[max(operator.sites)].shape[2]
+        r_dim = state_copy[max(operator.sites)].shape[2]
         R = ncon((np.eye(r_dim), r), ((-1, -2), (-3,)))
         for i in sorted(operator.sites):
             L = contract_left(L, state_copy[i], operator[i])

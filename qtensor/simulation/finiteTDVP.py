@@ -81,6 +81,9 @@ def tdvp_new(state, operator, t_f, steps, method,
     R_con = right_mpo_contractions_new(state, operator)
     state_history = {}
     expectations = {}
+
+    state.right_orthogonal()
+
     for t in times:
         if verbose:
             print(f't: {t:.3f}')
@@ -94,6 +97,7 @@ def tdvp_new(state, operator, t_f, steps, method,
         state, L_con, _ = tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method)
         R_con = {}
         state, _, R_con = tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method)    
+
     if verbose:
         print('TDVP finished!')
     return state_history, expectations 

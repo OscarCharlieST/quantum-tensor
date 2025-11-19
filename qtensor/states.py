@@ -366,3 +366,26 @@ def random_mps(N, d, D, seed=0):
     statedict[sites[-1]] = (np.random.normal(size=(d, D)) + 1j*np.random.normal(size=(d, D)))/r
     state = mps(statedict)
     return state
+
+def spin_up_mps(N, D, noise=0.0):
+    """
+    MPS representation of all spin up state
+    """
+    statedict = {}
+    sites = np.arange(N)
+    statedict[sites[0]] = np.zeros((2, D))*(1+1j)
+    statedict[sites[0]][0,0] = 1.0
+    for i in sites[1:-1]:
+        statedict[i] = np.zeros((2, D, D))*(1+1j)
+        statedict[i][0, :, :] = np.eye(D)
+    statedict[sites[-1]] = np.zeros((2, D))*(1+1j)
+    statedict[sites[-1]][0,0] = 1.0
+    state = mps(statedict)
+    if not noise:
+        return state
+    else:
+        random_state = random_mps(N, 2, D, seed=42)
+        for i in sites:
+            state[i] += noise * random_state[i]
+        state.left_orthogonal()
+        return state 
