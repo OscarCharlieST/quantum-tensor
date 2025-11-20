@@ -157,7 +157,7 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
                  ((-2, -4, 1), (-1, -3, 1, 2), (2,)))
     M = method(state[current_site], H_eff, dt)
     M = M / la.norm(M)
-    state[current_site] = M
+    state[current_site] = M.T
 
     return state, L_con, R_con
 
@@ -189,7 +189,7 @@ def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
     U, s, V = la.svd(M, full_matrices=False)
     B_new = V.T
     C_new = U @ np.diag(s)
-    state[current_site] = B_new.T
+    state[current_site] = B_new
     R_con[current_site] = ncon((B_new, B_new.conj(), current_op), 
                                ((1, -1), (2, -2), (1, 2, -3)))
     
@@ -216,14 +216,13 @@ def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
 
     return state, L_con, R_con
 
-
 def gs_evolve(psi, H, t_f=1000, steps=100):
     """
     Given an intial state and a hamiltonian, approximate the ground state
     by imaginary time tdvp
     """
     print("Intial energy:", ops.expect(psi, H))
-    _, _ = tdvp_new(psi, H, -1j*t_f, steps, method_fast_new)
+    _, _ = tdvp_new(psi, H, -1j*t_f, steps, method_exact_new)
     print("Final energy:", ops.expect(psi, H))
     return psi
 
@@ -281,9 +280,10 @@ def method_fast_new(tensor, H_eff, dt):
     tensor_vec = tensor.flatten()
     # Reshape H_eff to be square matrix in vectorised space
     H_eff_mat = H_eff.reshape((vector_dim, vector_dim))
-    # mat_exp = la.expm(-0.5*1j*dt*H_eff_mat)
-    # tensor_evolved = tensor_vec @ mat_exp
-    tensor_evolved = tensor_vec + tensor_vec @ (-0.5*1j*dt*H_eff_mat)
+    # mat_exp   = la.expm(-0.5*1j*dt*H_eff_mat)
+    #           = 1 - 0.5*1j*dt*H_eff_mat + O(dt^2)
+    mat_exp_approx = np.eye(vector_dim) - 0.5*1j*dt*H_eff_mat
+    tensor_evolved = tensor_vec @ mat_exp_approx
     return tensor_evolved.reshape(tensor.shape)
 
 
