@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import linalg as la
 from ncon import ncon
+import time
 
 from numba import jit
 from numba import njit
