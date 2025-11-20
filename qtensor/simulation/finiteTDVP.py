@@ -34,11 +34,11 @@ def tdvp_new(state, operator, t_f, steps,
              history=False, verbose=False, **kwargs):
     times = np.linspace(0, t_f, steps+1)
     dt = t_f/steps
-    R_con = right_mpo_contractions_new(state, operator)
     state_history = {}
     expectations = {}
 
     state.right_orthogonal()
+    R_con = right_mpo_contractions_new(state, operator)
 
     for t in times:
         if verbose:

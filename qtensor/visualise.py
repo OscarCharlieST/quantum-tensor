@@ -54,7 +54,7 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None):
     ax[1,].plot(times, middle_energy)
 
     ax[2,].set_xlabel("Time")
-    ax[2,].set_ylabel(r'$dE/dt$')
+    ax[2,].set_ylabel(r'$central dE/dt$')
     dE_dt= [(middle_energy[i+1] - middle_energy[i])/
             (times[i+1] - times[i])
             for i in range(len(middle_energy)-1)]
