@@ -10,6 +10,7 @@ import time
 
 import qtensor.states as states
 import qtensor.operators as ops
+import qtensor.simulation.updatemethod as method
 
 
 """ 
@@ -28,7 +29,8 @@ Indexing:
     2                           2             2 
 """
 
-def tdvp_new(state, operator, t_f, steps, method,
+def tdvp_new(state, operator, t_f, steps, 
+             method=method.exact,
              history=False, verbose=False, **kwargs):
     times = np.linspace(0, t_f, steps+1)
     dt = t_f/steps
@@ -216,7 +218,7 @@ def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
 
     return state, L_con, R_con
 
-def gs_evolve(psi, H, t_f=1000, steps=100):
+def gs_evolve(psi, H, t_f=1000, steps=100, method=method.exact):
     """
     Given an intial state and a hamiltonian, approximate the ground state
     by imaginary time tdvp
