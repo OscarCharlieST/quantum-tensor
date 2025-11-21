@@ -65,3 +65,13 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None):
     
     plt.show()
 
+def plot_spin_components_spatial(state, sites):
+    fig, ax = plt.subplots(1,1)
+    for p in ['x', 'y', 'z']:
+        paulis = ops.pauli_at_sites(sites, p)
+        expects = [np.real(ops.local_expect(state, paulis[site]))
+                   for site in sites]
+        ax.plot(sites, expects, label=f'$\sigma^{p}$')
+    ax.set_ylabel(r'$\langle \sigma^{i} \rangle$')
+    ax.set_xlabel('Site')
+    ax.legend()

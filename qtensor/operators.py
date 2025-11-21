@@ -241,6 +241,15 @@ def two_site_pauli(site_l, pauli_l='z', pauli_r='z'):
     r = np.array([1,])
     return mpo([(site_l, W_l), (site_l+1, W_r)], l, r)
 
+def pauli_at_sites(sites, pauli_type='z'):
+    """
+    Returns *list* of identical pauli mpos at each site specified
+    """
+    paulis = []
+    for site in sites:
+        paulis.append(single_site_pauli(site, pauli_type))
+    return paulis
+
 def extensive_twosite_local_term(H, site):
     """
     Construct a local (2site) energy term between (site, site+1)

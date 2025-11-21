@@ -58,6 +58,35 @@ def tdvp_new(state, operator, t_f, steps,
         print('TDVP finished!')
     return state_history, expectations 
 
+def tdvp_right_only(state, operator, t_f, steps, 
+             method=method.exact,
+             history=False, verbose=False, **kwargs):
+    times = np.linspace(0, t_f, steps+1)
+    dt = t_f/steps
+    state_history = {}
+    expectations = {}
+
+    state.right_orthogonal()
+    R_con = right_mpo_contractions_new(state, operator)
+
+    for t in times:
+        if verbose:
+            print(f't: {t:.3f}')
+        if history:
+            now_state = copy.copy(state)
+            state_history[t] = now_state   
+        if 'operators' in kwargs:
+            expectations[t] = [ops.local_expect(state, op) for op in kwargs['operators']]
+            
+        L_con = {}
+        state, L_con, _ = tdvp_sweep_r_new(state, operator, dt*2, L_con, R_con, method) #double time step as only sweepoing in one direction
+        state.right_orthogonal() # reset to right orth form
+        R_con = right_mpo_contractions_new(state, operator) # explicitly caluclarte right contractions again
+
+    if verbose:
+        print('TDVP finished!')
+    return state_history, expectations 
+
 def right_mpo_contractions_new(state, operator):
     sites = sorted(state.sites, reverse=True)
     R_con = {}
