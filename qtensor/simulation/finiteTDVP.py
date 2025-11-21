@@ -113,28 +113,14 @@ def tdvp_step_r_new(state, operator, dt, L_con, R_con, method):
     C_new = method(C_new, H_eff_bond, -dt)
 
     C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
-    state[c_site+1] = C_new @ state[c_site+1]  # update the next site tensor
+    # state[c_site+1] = C_new @ state[c_site+1]  # update the next site tensor
+    #####THISIHSIHSIHSIHSISHISHS
+    # Hacky workaround: transpose
+    # Transpose will leave the second-to-last index of a 3d array in the same place
+    # but it will swap the two indeciies of a 2D array
+    # so if we transpose first, then multiply, then transpose back, we get the correct result
+    state[c_site+1] = (C_new @ state[c_site+1].T).T
     state.c_site += 1  # shift the centre to the right
-
-    return state, L_con, R_con
-
-def tdvp_step_l_new(state, operator, dt, L_con, R_con, method):
-    c_site = state.c_site
-    M = state[c_site]
-    H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
-                 ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
-    M_new = method(M, H_eff, dt)
-    M_new = M_new / la.norm(M_new)  # normalize the new tensor
-    C_new, B_new = states.right_orthogonal_tensor(M_new)
-    state[c_site] = B_new
-    R_con[c_site] = ops.contract_right(R_con[c_site+1], B_new, operator[c_site])
-    
-    H_eff_bond = ncon((L_con[c_site-1], R_con[c_site]), ((-1, -3, 1), (-2, -4, 1)))
-    C_new = method(C_new, H_eff_bond, -dt)
-
-    C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
-    state[c_site-1] = state[c_site-1] @ C_new  # update the next site tensor
-    state.c_site -= 1  # shift the centre to the right
 
     return state, L_con, R_con
 
@@ -188,7 +174,27 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
                  ((-2, -4, 1), (-1, -3, 1, 2), (2,)))
     M = method(state[current_site], H_eff, dt)
     M = M / la.norm(M)
-    state[current_site] = M.T
+    state[current_site] = M
+
+    return state, L_con, R_con
+
+def tdvp_step_l_new(state, operator, dt, L_con, R_con, method):
+    c_site = state.c_site
+    M = state[c_site]
+    H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
+                 ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
+    M_new = method(M, H_eff, dt)
+    M_new = M_new / la.norm(M_new)  # normalize the new tensor
+    C_new, B_new = states.right_orthogonal_tensor(M_new)
+    state[c_site] = B_new
+    R_con[c_site] = ops.contract_right(R_con[c_site+1], B_new, operator[c_site])
+    
+    H_eff_bond = ncon((L_con[c_site-1], R_con[c_site]), ((-1, -3, 1), (-2, -4, 1)))
+    C_new = method(C_new, H_eff_bond, -dt)
+
+    C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
+    state[c_site-1] = state[c_site-1] @ C_new  # update the next site tensor
+    state.c_site -= 1  # shift the centre to the right
 
     return state, L_con, R_con
 
@@ -218,8 +224,8 @@ def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
     M = method(state[current_site], H_eff, dt)
     M = M / la.norm(M)
     U, s, V = la.svd(M, full_matrices=False)
-    B_new = V.T
-    C_new = U @ np.diag(s)
+    B_new = U
+    C_new = (np.diag(s) @ V).T
     state[current_site] = B_new
     R_con[current_site] = ncon((B_new, B_new.conj(), current_op), 
                                ((1, -1), (2, -2), (1, 2, -3)))
