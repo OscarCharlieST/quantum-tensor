@@ -18,6 +18,16 @@ def exact(tensor, H_eff, dt):
     tensor_evolved = tensor_vec @ mat_exp
     return tensor_evolved.reshape(tensor.shape)
 
+def diagonal(tensor, H_eff, dt):
+    vector_dim = np.product(tensor.shape)
+    tensor_vec = tensor.flatten()
+    # Reshape H_eff to be square matrix in vectorised space
+    H_eff_mat = H_eff.reshape((vector_dim, vector_dim))
+    
+    mat_exp = la.expm(-0.5*1j*dt*H_eff_mat)
+    tensor_evolved = tensor_vec @ mat_exp
+    return tensor_evolved.reshape(tensor.shape)
+
 def fast(tensor, H_eff, dt):
     # Calculate dimension of the space the vectorized tensor lives in
     vector_dim = np.product(tensor.shape)

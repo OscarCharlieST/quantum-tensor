@@ -17,7 +17,7 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None):
     """
     Plot the time evolution of the state and the expectations.
     """
-    times = np.real(sorted(list(state_history.keys())))
+    times = sorted(np.abs(list(state_history.keys())))
     if t_f:
         times = [t for t in times if t <= t_f]
     sites = range(len(H_terms))
