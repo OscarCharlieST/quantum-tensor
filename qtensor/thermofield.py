@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 import copy
 import qtensor.states as states 
 import qtensor.operators as ops
-from qtensor.simulation.finiteTDVP import tdvp, right_mpo_contractions, inf_T_thermofield_variational
 import qtensor.simulation.finiteTDVP as sim
 
 def infinite_T_thermofield(N, D, noise=0):
