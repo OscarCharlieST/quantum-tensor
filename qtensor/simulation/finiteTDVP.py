@@ -48,7 +48,9 @@ def tdvp_new(state, operator, t_f, steps,
             state_history[t] = now_state   
         if 'operators' in kwargs:
             expectations[t] = [ops.local_expect(state, op) for op in kwargs['operators']]
-            
+        if 'extensive_operators' in kwargs:
+            expectations[t] = [ops.expect(state, op) for op in kwargs['extensive_operators']]
+
         L_con = {}
         state, L_con, _ = tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method)
         R_con = {}

@@ -4,6 +4,7 @@ import copy
 import qtensor.states as states 
 import qtensor.operators as ops
 import qtensor.simulation.finiteTDVP as sim
+import qtensor.simulation.updatemethod as methods
 
 def infinite_T_thermofield(N, D, noise=0):
     """
@@ -71,14 +72,15 @@ def thermofield_hamiltonian(H):
 
 def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True, method=None):
     if not initial_state:    
-        state = inf_T_thermofield_variational(N, D)
+        state = sim.inf_T_thermofield_variational(N, D)
     else:
         state = copy.deepcopy(initial_state)
         # initial state must be infinite temperature
         pass
     if not method:
-        method = sim.method_fast
-    _, expectations = tdvp(state, H, -1j*beta*1/4, steps, method, history=True, operators=[H])
+        method = methods.exact
+    _, expectations = sim.tdvp_new(state, H, -1j*beta*1/4, steps, method, 
+                                   history=True, extensive_operators=[H])
     time = np.abs(list(expectations.keys()))*4
     energy = np.real([opexp[0] for opexp in expectations.values()])/2
     if plot:
