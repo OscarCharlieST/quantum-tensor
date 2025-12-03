@@ -6,7 +6,7 @@ import qtensor.operators as ops
 import qtensor.simulation.finiteTDVP as sim
 import qtensor.simulation.updatemethod as methods
 
-def infinite_T_thermofield(N, D, noise=0):
+def inf_T_thermofield(N, D, noise=0):
     """
     Builds an infinite temperature thermofield with N sites and bond dimension D
     """
@@ -15,7 +15,7 @@ def infinite_T_thermofield(N, D, noise=0):
     M_R = M_L
     M = np.zeros((4,D,D))
     M[:, 0, 0] = np.array([1, 0, 0, 1])
-    Ms = [M for _ in range(N)]
+    Ms = [M for _ in range(N-2)]
     if noise:
         Ms = [M + noise * np.random.rand(4, D, D) for M in Ms]
     tensor_list = [M_L] + Ms + [M_R]
@@ -78,7 +78,7 @@ def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True
         # initial state must be infinite temperature
         pass
     if not method:
-        method = methods.exact
+        method = methods.fast
     _, expectations = sim.tdvp_new(state, H, -1j*beta*1/4, steps, method, 
                                    history=True, extensive_operators=[H])
     time = np.abs(list(expectations.keys()))*4
