@@ -23,8 +23,9 @@ def diagonal(tensor, H_eff, dt):
     tensor_vec = tensor.flatten()
     # Reshape H_eff to be square matrix in vectorised space
     H_eff_mat = H_eff.reshape((vector_dim, vector_dim))
-    
-    mat_exp = la.expm(-0.5*1j*dt*H_eff_mat)
+    eigvals, eigvecs = la.eigh(H_eff_mat)
+    expvals = np.exp(-0.5*1j*dt*eigvals)
+    mat_exp = eigvecs @ np.diag(expvals) @ eigvecs.conj().T
     tensor_evolved = tensor_vec @ mat_exp
     return tensor_evolved.reshape(tensor.shape)
 
@@ -39,7 +40,6 @@ def fast(tensor, H_eff, dt):
     mat_exp_approx = np.eye(vector_dim) - 0.5*1j*dt*H_eff_mat
     tensor_evolved = tensor_vec @ mat_exp_approx
     return tensor_evolved.reshape(tensor.shape)
-
 
 def fast_old(tensor, H_eff, dt, **kwargs):
     """
