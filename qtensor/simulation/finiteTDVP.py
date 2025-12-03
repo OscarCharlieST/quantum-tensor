@@ -2,6 +2,7 @@ import copy
 import scipy.linalg as la
 import matplotlib.pyplot as plt
 import numpy as np
+import progressbar
 from ncon import ncon
 from numba import jit
 from numba import njit
@@ -40,6 +41,9 @@ def tdvp_new(state, operator, t_f, steps,
     state.right_orthogonal()
     R_con = right_mpo_contractions_new(state, operator)
 
+    b = progressbar.ProgressBar(maxval=steps)
+    b.start()
+
     for t in times:
         if verbose:
             print(f't: {t:.3f}')
@@ -55,6 +59,8 @@ def tdvp_new(state, operator, t_f, steps,
         state, L_con, _ = tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method)
         R_con = {}
         state, _, R_con = tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method)    
+
+        b.update(t/dt)
 
     if verbose:
         print('TDVP finished!')
