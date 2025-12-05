@@ -78,7 +78,7 @@ def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True
         # initial state must be infinite temperature
         pass
     if not method:
-        method = methods.fast
+        method = methods.exact
     _, expectations = sim.tdvp_new(state, H, -1j*beta*1/4, steps, method, 
                                    history=True, extensive_operators=[H])
     time = np.abs(list(expectations.keys()))*4
@@ -93,12 +93,19 @@ def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True
 
 def near_thermal(H, profile, D, steps=100, initial_state=None):
     assert len(H.sites) == len(profile), "temp profile incorrect length"
+    
+    b_profile_r = (profile + np.roll(profile, -1)) / 2 # Bond to the left of site avg temp
+    
     H_new = []
-    for site, beta in zip(H.sites, profile):
+    for site, beta, br in zip(H.sites, profile, b_profile_r):
         W = copy.copy(H[site]) # don't actually edit the hamiltonian
-        W[:, :, :-1, 1:] = W[:, :, :-1, 1:] * np.sqrt(beta) # twosite terms get a factor from each site
-        W[:, :, 0, -1] = W[:, :, 0, -1] * np.sqrt(beta) # onesite term gets both sqrts at once
+        # need to sort out sign information so positive and negative beta are allowed
+        # Not perfect but does the job - some issues wherever beta changes sign
+        W[:, :, :-1, 1:-1] = W[:, :, :-1, 1:-1] * br
+        W[:, :, 1:-1, 1:] = W[:, :, 1:-1, 1:]
+        W[:, :, 0, -1] = W[:, :, 0, -1] * beta # onesite term gets both sqrts at once
         H_new.append((site, W))
+
     H_eff = ops.mpo(H_new, H.l, H.r)
     state, _, _ = finite_T_thermofield(1, len(profile), D, H_eff, steps=steps, initial_state=initial_state,
                                        plot=False)
