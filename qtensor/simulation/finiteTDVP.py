@@ -41,8 +41,9 @@ def tdvp_new(state, operator, t_f, steps,
     state.right_orthogonal()
     R_con = right_mpo_contractions_new(state, operator)
 
-    b = progressbar.ProgressBar(maxval=steps)
+    b = progressbar.ProgressBar(maxval=steps+1)
     b.start()
+    step=0
 
     for t in times:
         if verbose:
@@ -59,8 +60,8 @@ def tdvp_new(state, operator, t_f, steps,
         state, L_con, _ = tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method)
         R_con = {}
         state, _, R_con = tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method)    
-
-        b.update(t/dt)
+        step+=1
+        b.update(step)
 
     if verbose:
         print('TDVP finished!')
