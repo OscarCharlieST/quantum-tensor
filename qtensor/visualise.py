@@ -5,15 +5,18 @@ from matplotlib.collections import LineCollection
 import numpy as np
 
 
-def plot_energy_density(state, H_terms):
-    fig, ax = plt.subplots(1,1)
+def plot_energy_density(state, H_terms, ax=None):
+    if not ax:            
+        fig, ax = plt.subplots(1,1)
     energy_density = [ops.local_expect(state, H_terms[i]) 
                       for i in sorted(H_terms.keys())]
     ax.plot(list(state.sites)[:-1], energy_density)
     ax.set_ylabel(r'$E$')
     ax.set_xlabel('Bond')
 
-def plot_energy_density_evolution(state_history, H_terms, t_f=None):
+    return fig, ax
+
+def plot_energy_density_evolution(state_history, H_terms, t_f=None, ax=None):
     """
     Plot the time evolution of the state and the expectations.
     """
@@ -23,7 +26,9 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None):
     sites = range(len(H_terms))
     middle_energy=[]
     
-    fig, ax = plt.subplots(3, 1, figsize=(8, 6), height_ratios=[2,1,1])
+    if not ax:
+        fig, ax = plt.subplots(3, 1, figsize=(8, 6), height_ratios=[2,1,1])
+    
     cmap = mpl.colormaps['magma']
 
     fig.suptitle("Energy Density Evolution")
@@ -64,6 +69,8 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None):
     plt.colorbar(line_collection, ax=ax[0,], label='Time')
     
     plt.show()
+
+    return fig, ax
 
 def plot_spin_components_spatial(state):
     fig, ax = plt.subplots(1,1)
