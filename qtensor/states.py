@@ -352,7 +352,7 @@ def partite_entropy(state, site):
     purity = np.sum([val**4 for val in s])
     return -np.log(purity)
 
-def random_mps(N, d, D, seed=0):
+def random(N, d, D, seed=0):
     """
     Unnormalized random MPS state generator
     """
@@ -367,7 +367,7 @@ def random_mps(N, d, D, seed=0):
     state = mps(statedict)
     return state
 
-def spin_up_mps(N, D, noise=0.0):
+def spin_up(N, D, noise=0.0):
     """
     MPS representation of all spin up state
     """
