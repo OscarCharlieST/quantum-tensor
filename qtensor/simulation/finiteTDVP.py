@@ -11,7 +11,7 @@ import time
 
 import qtensor.states as states
 import qtensor.operators as ops
-import qtensor.simulation.updatemethod as method
+import qtensor.simulation.updatemethod as methods
 
 
 """ 
@@ -30,8 +30,8 @@ Indexing:
     2                           2             2 
 """
 
-def tdvp_new(state, operator, t_f, steps, 
-             method=method.exact,
+def tdvp_new(state, operator, t_f, steps, method=methods.exact,
+             c_method=methods.lanczos_center, b_method=methods.lanczos_bond,
              history=False, verbose=False, **kwargs):
     times = np.linspace(0, t_f, steps+1)
     dt = t_f/steps
@@ -57,9 +57,9 @@ def tdvp_new(state, operator, t_f, steps,
             expectations[t] = [ops.expect(state, op) for op in kwargs['extensive_operators']]
 
         L_con = {}
-        state, L_con, _ = tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method)
+        state, L_con, _ = tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method, c_method, b_method)
         R_con = {}
-        state, _, R_con = tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method)    
+        state, _, R_con = tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method, c_method, b_method)    
         step+=1
         b.update(step)
 
@@ -79,19 +79,16 @@ def right_mpo_contractions_new(state, operator):
                            ((3, -1, 1), (4, -2, 2), (3, 4, -3, 5), (1, 2, 5)))
     return R_con
 
-def tdvp_step_r_new(state, operator, dt, L_con, R_con, method):
+def tdvp_step_r_new(state, operator, dt, L_con, R_con, c_method, b_method):
     c_site = state.c_site
     M = state[c_site]
-    H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
-                 ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
-    M_new = method(M, H_eff, dt)
+    M_new = c_method(M,  operator[c_site], L_con[c_site-1], R_con[c_site+1], dt=dt/2)
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
     A_new, C_new = states.left_orthogonal_tensor(M_new)
     state[c_site] = A_new  # update the centre tensor, now left-orthogonal
     L_con[c_site] = ops.contract_left(L_con[c_site-1], A_new, operator[c_site])
     
-    H_eff_bond = ncon((L_con[c_site], R_con[c_site+1]), ((-1, -3, 1), (-2, -4, 1)))
-    C_new = method(C_new, H_eff_bond, -dt)
+    C_new = b_method(C_new, L_con[c_site], R_con[c_site+1], dt=-dt/2)
 
     C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
     # state[c_site+1] = C_new @ state[c_site+1]  # update the next site tensor
@@ -105,7 +102,7 @@ def tdvp_step_r_new(state, operator, dt, L_con, R_con, method):
 
     return state, L_con, R_con
 
-def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
+def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method, c_method, b_method):
     """
     Perform a TDVP sweep to the right.
     Inputs:
@@ -137,16 +134,14 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
                                ((1, -1), (2, -2), (1, 2, -3)))
     
     # Update C tensor
-    H_eff_bond = ncon((L_con[current_site], R_con[current_site+1]), 
-                      ((-1, -3, 1), (-2, -4, 1)))
-    C_new = method(C_new, H_eff_bond, -dt)
+    C_new = b_method(C_new, L_con[current_site], R_con[current_site+1], dt=-dt/2)
     C_new = C_new / la.norm(C_new)
     state[current_site+1] = C_new @ state[current_site+1]
     state.c_site += 1  # shift the centre to the right
     
     # Update bulk
     for site in sites[1:-1]:
-        state, L_con, R_con = tdvp_step_r_new(state, operator, dt, L_con, R_con, method)
+        state, L_con, R_con = tdvp_step_r_new(state, operator, dt, L_con, R_con, c_method, b_method)
     
     # Update rightmost tensor
     assert state.c_site == sites[-1], "Centre isn't at right of chain somehow"
@@ -159,19 +154,16 @@ def tdvp_sweep_r_new(state, operator, dt, L_con, R_con, method):
 
     return state, L_con, R_con
 
-def tdvp_step_l_new(state, operator, dt, L_con, R_con, method):
+def tdvp_step_l_new(state, operator, dt, L_con, R_con, c_method, b_method):
     c_site = state.c_site
     M = state[c_site]
-    H_eff = ncon((L_con[c_site-1], operator[c_site], R_con[c_site+1]),
-                 ((-2, -5, 1), (-1, -4, 1, 2), (-3, -6, 2)))
-    M_new = method(M, H_eff, dt)
+    M_new = c_method(M, operator[c_site], L_con[c_site-1], R_con[c_site+1], dt=dt/2)
     M_new = M_new / la.norm(M_new)  # normalize the new tensor
     C_new, B_new = states.right_orthogonal_tensor(M_new)
     state[c_site] = B_new
     R_con[c_site] = ops.contract_right(R_con[c_site+1], B_new, operator[c_site])
     
-    H_eff_bond = ncon((L_con[c_site-1], R_con[c_site]), ((-1, -3, 1), (-2, -4, 1)))
-    C_new = method(C_new, H_eff_bond, -dt)
+    C_new = b_method(C_new, L_con[c_site-1], R_con[c_site], dt=-dt/2)
 
     C_new = C_new / la.norm(C_new)  # normalize the new centre tensor
     state[c_site-1] = state[c_site-1] @ C_new  # update the next site tensor
@@ -179,7 +171,7 @@ def tdvp_step_l_new(state, operator, dt, L_con, R_con, method):
 
     return state, L_con, R_con
 
-def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
+def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method, c_method, b_method):
     """
     Perform a TDVP sweep to the left.
     Inputs:
@@ -211,17 +203,15 @@ def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
     R_con[current_site] = ncon((B_new, B_new.conj(), current_op), 
                                ((1, -1), (2, -2), (1, 2, -3)))
     
-    # Update C tensor
-    H_eff_bond = ncon((L_con[current_site-1], R_con[current_site]), 
-                      ((-1, -3, 1), (-2, -4, 1)))
-    C_new = method(C_new, H_eff_bond, -dt)
+    # Update bond tensor
+    C_new = b_method(C_new,L_con[current_site-1], R_con[current_site], dt=-dt/2)
     C_new = C_new / la.norm(C_new)
     state[current_site-1] = state[current_site-1] @ C_new
     state.c_site -= 1  # shift the centre to the left
     
     # Update bulk
     for site in sites[1:-1]:
-        state, L_con, R_con = tdvp_step_l_new(state, operator, dt, L_con, R_con, method)
+        state, L_con, R_con = tdvp_step_l_new(state, operator, dt, L_con, R_con, c_method, b_method)
     
     # Update leftmost tensor
     assert state.c_site == state.sites[0], "Centre isn't at left of chain somehow"
@@ -234,13 +224,13 @@ def tdvp_sweep_l_new(state, operator, dt, L_con, R_con, method):
 
     return state, L_con, R_con
 
-def gs_evolve(psi, H, t_f=1000, steps=100, method=method.exact):
+def gs_evolve(psi, H, t_f=1000, steps=100, method=methods.exact):
     """
     Given an intial state and a hamiltonian, approximate the ground state
     by imaginary time tdvp
     """
     print("Intial energy:", ops.expect(psi, H))
-    _, _ = tdvp_new(psi, H, -1j*t_f, steps, method_exact_new)
+    _, _ = tdvp_new(psi, H, -1j*t_f, steps, method.exact)
     print("Final energy:", ops.expect(psi, H))
     return psi
 

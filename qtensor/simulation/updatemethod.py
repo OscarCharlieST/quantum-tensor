@@ -127,18 +127,18 @@ def lanczos_parts(C, W, L, R,
         C_next, norm, H_cons_i = lanczos_loop(basis, W, L, R)
         H_cons.append(H_cons_i)
         if norm < epsilon:
-            print("Norm converged; terminating loop")
-            print("Norm / epsilon: ", round(np.real(norm/epsilon), 4))
+            # print("Norm converged; terminating loop")
+            # print("Norm / epsilon: ", round(np.real(norm/epsilon), 4))
             return basis, H_subspace_matrix(H_cons)
         basis.append(C_next)
-    print("Hit iteration limit before convergence")
-    print("Norm / epsilon: ", round(np.real(norm/epsilon), 4))
+    # print("Hit iteration limit before convergence")
+    # print("Norm / epsilon: ", round(np.real(norm/epsilon), 4))
     return basis, H_subspace_matrix(H_cons)
 
 def lanczos_center(C, W, L, R,
                 dt=0.01,
                 epsilon=1e-5,
-                max_iters=100):
+                max_iters=16):
     """
     Method for evolving a center gauge tensor as exp(-i H_eff dt)|C>
     
@@ -248,17 +248,17 @@ def lanczos_parts_bond(M, L, R, epsilon=1e-6, max_iters=100):
         M_next, norm, H_col = lanczos_loop_bond(basis, L, R)
         H_cols.append(H_col)
         if np.real(norm) < epsilon:
-            print("Norm converged; terminating loop")
-            print("Norm / epsilon:", round(np.real(norm / epsilon), 4))
+            # print("Norm converged; terminating loop")
+            # print("Norm / epsilon:", round(np.real(norm / epsilon), 4))
             return basis, H_subspace_matrix(H_cols)
         basis.append(M_next)
 
-    print("Hit iteration limit before convergence")
-    if norm is not None:
-        print("Norm / epsilon:", round(np.real(norm / epsilon), 4))
+    # print("Hit iteration limit before convergence")
+    # if norm is not None:
+        # print("Norm / epsilon:", round(np.real(norm / epsilon), 4))
     return basis, H_subspace_matrix(H_cols)
 
-def lanczos_bond(M, L, R, dt=0.01, epsilon=1e-5, max_iters=100):
+def lanczos_bond(M, L, R, dt=0.01, epsilon=1e-5, max_iters=16):
     """
     Apply exp(-i H_eff dt) to a bond-centred tensor via Lanczos in the Krylov subspace.
     Parameters:
