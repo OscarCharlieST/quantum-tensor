@@ -288,21 +288,16 @@ def expect(state, operator):
     O is an MPO with left and right indices l and r.
     """
     assert sorted(state.sites) == sorted(operator.sites), "MPS and MPO sites do not match"
-
     sites = sorted(state.sites)
-    A_L = state[min(sites)]
-    W_L = operator[min(sites)]
+
     l = operator.l
-    L = ncon((A_L,A_L.conj(),W_L,l),
-             ((1,-1),(2,-2), (1, 2, 3, -3), (3,)))
-    
-    A_R = state[max(sites)]
-    W_R = operator[max(sites)]
+    L = ncon((np.eye(1), l), 
+             ((-1, -2), (-3,)))
     r = operator.r
-    R = ncon((A_R,A_R.conj(),W_R,r),
-             ((1,-1),(2,-2), (1, 2, -3, 3), (3,)))
+    R = ncon((np.eye(1), r),
+             ((-1, -2), (-3,)))
     
-    for i in sites[1:-1]:
+    for i in sites:
         L = contract_left(L, state[i], operator[i])
     Wexpect = ncon((L, R), ((1, 2, 3), (1, 2, 3)))
     return Wexpect
@@ -318,23 +313,25 @@ def local_expect(state, operator):
     r = operator.r 
 
     if min(state.sites) in operator.sites:
-        r_dim = state_copy[max(operator.sites)].shape[-1]
+        r_dim = state_copy[max(operator.sites)].shape[2]
         R = ncon((np.eye(r_dim), r), ((-1, -2), (-3,)))
-        L = ncon((state_copy.L(), state_copy.L().conj(), operator[min(state.sites)], operator.l),
-                 ((1, -1), (2, -2), (1, 2, 3, -3), (3,)))
-        for i in sorted(operator.sites)[1:]:
+        l = operator.l
+        L = ncon((np.eye(1), l), 
+             ((-1, -2), (-3,)))
+        for i in sorted(operator.sites):
             L = contract_left(L, state_copy[i], operator[i])
     elif max(state.sites) in operator.sites:
         l_dim = state_copy[min(operator.sites)].shape[1]
         L = ncon((np.eye(l_dim), l), ((-1, -2), (-3,)))
-        R = ncon((state_copy.R(), state_copy.R().conj(), operator[max(state.sites)], operator.r),
-                 ((1, -1), (2, -2), (1, 2, -3, 3), (3,)))
-        for i in sorted(operator.sites)[:-1]:
+        r = operator.r
+        R = ncon((np.eye(1), r),
+                ((-1, -2), (-3,)))
+        for i in sorted(operator.sites, reverse=True):
             R = contract_right(R, state_copy[i], operator[i])
     else:
         l_dim = state_copy[min(operator.sites)].shape[1]
         L = ncon((np.eye(l_dim), l), ((-1, -2), (-3,)))
-        r_dim = state_copy[max(operator.sites)].shape[-1]
+        r_dim = state_copy[max(operator.sites)].shape[2]
         R = ncon((np.eye(r_dim), r), ((-1, -2), (-3,)))
         for i in sorted(operator.sites):
             L = contract_left(L, state_copy[i], operator[i])

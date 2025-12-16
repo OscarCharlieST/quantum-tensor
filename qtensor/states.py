@@ -32,8 +32,6 @@ class mps:
         else:
             raise ValueError("Ms must be a list of tensors or a dictionary of sites:tensor.")
         self.sites = sorted(self.tensors.keys())
-        assert len(np.shape(self.tensors[self.sites[0]]))==2, "Leftmost tensor must be a matrix."
-        assert len(np.shape(self.tensors[self.sites[-1]]))==2, "Rightmost tensor must be a matrix."
         self.centred = False
         self.bond_centred = False
         self.normalized = False
@@ -98,46 +96,6 @@ class mps:
         self.bond_centred = False
         self.form = 'center'
     
-    def bond_centralize(self, side='right'):
-        """
-        Given a centralized MPS, shifts the 'centre' to the bond between c_site and c_site+1.
-        """
-        if not self.form == 'center':
-            raise ValueError("MPS is not centered.")
-        if self.bond_centred:
-            raise ValueError("MPS is already bond centered.")
-        sites = sorted(self.sites)
-        c_site = self.c_site
-        if side == 'left':
-            centre_tensor = self.tensors[c_site]
-            B, s, Ul, Ur = bond_centre_l(centre_tensor)
-            self.tensors[c_site] = B
-            for site in sites:
-                if site < c_site:
-                    self.tensors[site] = Ul.conj().T @ self.tensors[site] @ Ul
-                elif site >= c_site:
-                    self.tensors[site] = Ur @ self.tensors[site] @ Ur.conj().T
-            self.R = Ur @ self.R
-            self.L = self.L @ Ul
-            self.form = 'bond'
-            self.schmidt = s # store the singular values across the bond
-            self.c_site -= 1 # shift the centre to the left
-
-        elif side == 'right':
-            centre_tensor = self.tensors[c_site]
-            A, s, Ul, Ur = bond_centre_l(centre_tensor)
-            self.schmidt = s # store the singular values across the bond
-            self.tensors[c_site] = A
-            for site in sites:
-                if site <= c_site:
-                    self.tensors[site] = Ul.conj().T @ self.tensors[site] @ Ul
-                elif site > c_site:
-                    self.tensors[site] = Ur @ self.tensors[site] @ Ur.conj().T
-            self.form = 'bond'
-            self.c_site += 0 # By convention, the bond is labeled according the site to it's left
-            self.R = Ur @ self.R
-            self.L = self.L @ Ul
-    
 def left_orthogonal_tensor(M, max_bond_dim=np.inf):
     """
     Left orthogonalize and compress a MPS tensor
@@ -177,21 +135,18 @@ def left_orthogonal_state(statedict, max_bond_dim):
     PsiL = {}
     # Orthogonalise leftmost tensor first
     M = statedict[sites[0]]
-    assert len(M.shape) == 2, "Leftmost tensor must be a matrix."
-    U, s, V = la.svd(M, full_matrices=False)
-    PsiL[sites[0]] = U
-    G = np.diag(s) @ V
+    M_lorth, G = left_orthogonal_tensor(M, max_bond_dim)
+    PsiL[sites[0]] = M_lorth
     for i in sites[1:-1]:
         M = statedict[i]
         M_eff = G @ M
         M_lorth, G = left_orthogonal_tensor(M_eff, max_bond_dim)
         PsiL[i] = M_lorth
-    # Handle rightmost tensor
+    # Handle rightmost tensor - doesnt need to be orthogonalised
     M = statedict[sites[-1]]
-    assert len(M.shape) == 2, "rightmost tensor must be a matrix."
-    M_eff = (G @ M.T).T
-    norm = np.trace(M_eff @ M_eff.conj().T)
-    M_eff = M_eff / np.sqrt(norm) # normalize
+    M_eff = G @ M
+    norm = la.norm(M_eff)
+    M_eff = M_eff / norm # normalize
     PsiL[sites[-1]] = M_eff
     return PsiL
 
@@ -230,20 +185,17 @@ def right_orthogonal_state(statedict, max_bond_dim):
     PsiR = {}
     # Orthogonalise leftmost tensor first
     M = statedict[sites[0]]
-    assert len(M.shape) == 2, "Rightmost tensor must be a matrix."
-    U, s, V = la.svd(M.T, full_matrices=False)
-    PsiR[sites[0]] = V.T
-    G = U @ np.diag(s)
+    G, M_rorth = right_orthogonal_tensor(M, max_bond_dim)
+    PsiR[sites[0]] = M_rorth
     for i in sites[1:-1]:
         M = statedict[i]
         M_eff = M @ G
         G, M_rorth = right_orthogonal_tensor(M_eff, max_bond_dim)
         PsiR[i] = M_rorth
     M = statedict[sites[-1]]
-    assert len(M.shape) == 2, "leftmost tensor must be a matrix."
     M_eff = M @ G
-    norm = np.trace(M_eff.conj().T @ M_eff)
-    M_eff = M_eff / np.sqrt(norm)
+    norm = la.norm(M_eff)
+    M_eff = M_eff / norm
     PsiR[sites[-1]] = M_eff
     return PsiR
 
@@ -257,10 +209,9 @@ def centralize_state(statedict, c_site, max_bond_dim):
     psi_centre = {}
     # Handle left side of chain
     sites_l = sorted([i for i in statedict.keys() if i < c_site])
-    M = statedict[sites_l[0]]
-    U, s, V = la.svd(M, full_matrices=False)
-    psi_centre[sites_l[0]] = U
-    Gl = np.diag(s) @ V
+    M = statedict[sites_l[0]]    
+    M_lorth, Gl = left_orthogonal_tensor(M, max_bond_dim)
+    psi_centre[sites_l[0]] = M_lorth
     for i in sites_l[1:]:
         M = statedict[i]
         M_eff = Gl @ M
@@ -270,9 +221,7 @@ def centralize_state(statedict, c_site, max_bond_dim):
     # Handle right side of chain
     sites_r = sorted([i for i in statedict.keys() if i > c_site], reverse=True)
     M = statedict[sites_r[0]]
-    U, s, V = la.svd(M.T, full_matrices=False)
-    psi_centre[sites_r[0]] = V.T
-    Gr = U @ np.diag(s)
+    Gr, M_rorth = right_orthogonal_tensor(M, max_bond_dim)
     for i in sites_r[1:]:
         M = statedict[i]
         M_eff = M @ Gr
@@ -287,70 +236,18 @@ def centralize_state(statedict, c_site, max_bond_dim):
     
     return psi_centre
 
-def shift_centre_r(C, B):
-    """
-    Given a centre tensor C and a right canonical tensor B,
-    shift the centre to the right by one site.
-    """
-    A, T = left_orthogonal(C)
-    C_new = T @ B
-    return A, C_new
-
-def shift_centre_l(C, A):
-    """
-    Given a centre tensor C and a left canonical tensor A,
-    shift the centre to the left by one site.
-    """
-    B, T = right_orthogonal(C)
-    C_new = A @ T
-    return C_new, B
-
-def bond_centre_r(C):
-    """
-    Given a centre tensor, decompose into a left-orthogonal tensor
-    and the SVD of the centre term. This svd gives a diagonal matrix, 
-    and two unitaries which are the left and right gauge transformations.
-    """
-    A, T = left_orthogonal(C)
-    UL, S, UR = la.svd(T, full_matrices=False)#
-    return A, S, UL, UR
-
-def bond_centre_l(C):
-    """
-    Given a centre tensor, decompose into a right-orthogonal tensor
-    and the SVD of the centre term. This svd gives a diagonal matrix, 
-    and two unitaries which are the left and right gauge transformations.
-    """
-    B, T = right_orthogonal(C)
-    UL, S, UR = la.svd(T, full_matrices=False)#
-    return B, S, UL, UR
-
 def overlap(state_1, state_2):
     """
     Compute inner product between two states
     """
     assert sorted(state_1.sites) == sorted(state_2.sites), "States need to be on the same lattice."
     sites = sorted(state_1.sites)
-    L = state_2[sites[0]].conj().T @ state_1[sites[0]]
-    R = state_1[sites[-1]].T @ state_2[sites[-1]].conj()
-    for i in sites[1:-1]:
+    L = np.array([[1]])
+    R = np.array([[1]])
+    for i in sites:
         L = ncon((L, state_1[i], state_2[i].conj()),
                  ((1, 2), (3, 2, -2), (3, 1, -1)))
     return np.trace(L @ R)
-
-def partite_entropy(state, site):
-    """
-    Compute the 2nd renyi entropy of the state partitioned across site and site+1
-    Inputs:
-        state: mps object
-        site: int
-    Returns:
-    """
-    tool_state = copy.copy(state)
-    tool_state.centralize(site)
-    _, s, _, _ = bond_centre_r(tool_state[site])
-    purity = np.sum([val**4 for val in s])
-    return -np.log(purity)
 
 def random(N, d, D, seed=0):
     """
@@ -360,10 +257,10 @@ def random(N, d, D, seed=0):
     np.random.seed(seed)
     statedict = {}
     sites = np.arange(N)
-    statedict[sites[0]] = (np.random.normal(size=(d, D)) + 1j*np.random.normal(size=(d, D)))/r
+    statedict[sites[0]] = (np.random.normal(size=(d, 1, D)) + 1j*np.random.normal(size=(d, 1, D)))/r
     for i in sites[1:-1]:
         statedict[i] = (np.random.normal(size=(d, D, D)) + 1j*np.random.normal(size=(d, D, D)))/r
-    statedict[sites[-1]] = (np.random.normal(size=(d, D)) + 1j*np.random.normal(size=(d, D)))/r
+    statedict[sites[-1]] = (np.random.normal(size=(d, D, 1)) + 1j*np.random.normal(size=(d, D, 1)))/r
     state = mps(statedict)
     return state
 
@@ -373,18 +270,18 @@ def spin_up(N, D, noise=0.0):
     """
     statedict = {}
     sites = np.arange(N)
-    statedict[sites[0]] = np.zeros((2, D))*(1+1j)
-    statedict[sites[0]][0,0] = 1.0
+    statedict[sites[0]] = np.zeros((2, 1, D))*(1+1j)
+    statedict[sites[0]][0,0,0] = 1.0
     for i in sites[1:-1]:
         statedict[i] = np.zeros((2, D, D))*(1+1j)
         statedict[i][0, :, :] = np.eye(D)
-    statedict[sites[-1]] = np.zeros((2, D))*(1+1j)
-    statedict[sites[-1]][0,0] = 1.0
+    statedict[sites[-1]] = np.zeros((2, D, 1))*(1+1j)
+    statedict[sites[-1]][0,0,0] = 1.0
     state = mps(statedict)
     if not noise:
         return state
     else:
-        random_state = random_mps(N, 2, D, seed=42)
+        random_state = random(N, 2, D, seed=42)
         for i in sites:
             state[i] += noise * random_state[i]
         state.left_orthogonal()
