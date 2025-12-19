@@ -16,18 +16,23 @@ def plot_energy_density(state, H_terms, ax=None):
 
     return fig, ax
 
-def plot_energy_density_evolution(state_history, H_terms, t_f=None, ax=None):
+def plot_energy_density_evolution(state_history, H_terms, t_f=None, block_len=1, ax=None, bond=None):
     """
     Plot the time evolution of the state and the expectations.
     """
     times = sorted(np.abs(list(state_history.keys())))
     if t_f:
-        times = [t for t in times if t <= t_f]
-    sites = range(len(H_terms))
-    middle_energy=[]
+        times = [t for t in times if t <= t_f and t]
+        times = [times[i] for i in range(len(times)) if i % block_len == 0]
     
     if not ax:
         fig, ax = plt.subplots(3, 1, figsize=(8, 6), height_ratios=[2,1,1])
+
+    sites = range(len(H_terms))
+    if not bond:
+        bond = len(sites)//2
+
+    bond_energy=[]
     
     cmap = mpl.colormaps['magma']
 
@@ -43,7 +48,7 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None, ax=None):
                         for term in H_terms]
         E_profiles.append(np.row_stack([sites, local_energy]).T)
         t_colors.append(cmap(t/max(times)))
-        middle_energy.append(local_energy[len(local_energy)//2])
+        bond_energy.append(local_energy[bond])
 
     line_collection = LineCollection(E_profiles,
                                      array=times,
@@ -55,14 +60,14 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None, ax=None):
     ax[0,].set_ylim(np.min(np.array(E_profiles)[:,:,1]),
                     np.max(np.array(E_profiles)[:,:,1]))
 
-    ax[1,].set_ylabel(r'central $E$')    
-    ax[1,].plot(times, middle_energy)
+    ax[1,].set_ylabel(fr'$E$ at site {bond}')    
+    ax[1,].plot(times, bond_energy)
 
     ax[2,].set_xlabel("Time")
-    ax[2,].set_ylabel(r'$central dE/dt$')
-    dE_dt= [(middle_energy[i+1] - middle_energy[i])/
+    ax[2,].set_ylabel(r'$dE/dt$')
+    dE_dt= [(bond_energy[i+1] - bond_energy[i])/
             (times[i+1] - times[i])
-            for i in range(len(middle_energy)-1)]
+            for i in range(len(bond_energy)-1)]
     
     ax[2,].plot(times[:-1], dE_dt)
            
