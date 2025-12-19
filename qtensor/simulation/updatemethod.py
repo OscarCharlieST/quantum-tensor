@@ -7,16 +7,108 @@ from numba import jit
 from numba import njit
 from numba.typed import List
 
+class TDVPMethod:
+    def __init__(self, c_method, b_method, **opts):
+        # opts decides params for the method to be used at every point of evolution; 
+        # only needs to be specified when class is created
+        self.c_method = c_method
+        self.b_method = b_method
+        self.opts = opts
+    def c(self, tensors, dt):
+        return self.c_method(tensors, dt, **self.opts)
+    def b(self, tensors, dt):
+        return self.b_method(tensors, dt, **self.opts)
     
-def exact(tensor, H_eff, dt):
+def lanczos_method(**lanczos_params):
+    return TDVPMethod(lanczos_centre, lanczos_bond, **lanczos_params)
+
+def lanczos_centre(tensors, dt=0.01, epsilon=1e-5, max_iters=16):
+    """
+    Method for evolving a centre gauge tensor as exp(-i H_eff dt)|C>
+    
+    Parameters:
+        C, W, L, R: numpy array
+            Centre tensor, local mpo tensor, left and right effective environments
+        dt: float, default is 0.01
+            Time step (this is halved outside the function for tdvp sweeping)
+        epsilon: float, default is 1e-5
+            Cutoff amplitude. Stops you from amplifying division-by small errors. 
+            This can happen if your initial vector is in a small eigensubspace.
+            Note that this is *not* the precision control.
+        max_iters: int or NoneType, default is 100
+            Maximum dimension of Krylov space built. The calculation is precise on
+            all vectors up to {x, Hx, ..., H^(max_iters)x}. As such, errors should be 
+            roughly of the order ~(dt*|H|)^(max_iters+1) 
+            For reference, for random input tensors with d=4, D=32, max_iters=16 
+            errors are ~1e-10, with a speed-up ~4000x
+
+    """
+    C, W, L, R = tensors
+    if not max_iters:
+        max_iters = np.prod(np.shape(C))
+        print(f"Iterations unlimited; full space has dimension {np.prod(np.shape(C))}")
+    basis, H_mat = lanczos_parts(C, W, L, R, epsilon, max_iters)
+    exp_H_mat = la.expm(-1j*dt*H_mat)
+    first_col = exp_H_mat[:,0]
+    evolved_C = la.norm(C)*sum([C_i*H_i0 for C_i, H_i0 in zip(basis, first_col)]) 
+    return evolved_C
+
+    
+def lanczos_bond(tensors, dt=0.01, epsilon=1e-5, max_iters=16):
+    """
+    Apply exp(-i H_eff dt) to a bond-centred tensor via Lanczos in the Krylov subspace.
+    Parameters:
+        M : array
+            Bond-centred tensor (shape (D_left, D_right)).
+        L, R : arrays
+            Left/right effective environments for apply_Heff_bond.
+        dt : float
+            Time step (halved outside here if using TDVP sweeps; this applies the full step).
+        epsilon : float
+            Cutoff for Lanczos norm convergence.
+        max_iters : int or None
+            Maximum Krylov dimension. If None or 0, use full flattened dimension.
+    Returns:
+        M_evolved : array
+            The evolved bond tensor: exp(-i H_eff dt) |M>.
+    """
+    M, L, R = tensors
+
+    if not max_iters:
+        max_iters = np.prod(np.shape(M))
+        print(f"Iterations unlimited; full space has dimension {np.prod(np.shape(M))}")
+
+    basis, H_mat = lanczos_parts_bond(M, L, R, epsilon=epsilon, max_iters=max_iters)
+    U = la.expm(-1j * dt * H_mat)
+    first_col = U[:, 0]
+    M_evolved = la.norm(M) * sum(M_i * U_i0 for M_i, U_i0 in zip(basis, first_col))
+    return M_evolved
+
+def exact_method():
+    return TDVPMethod(exact_centre, exact_bond)
+
+def exact_centre(tensors, dt, **kwargs):
+    C, W, L, R = tensors
+    H_eff = ncon((W, L, R),
+                 ((-1, -4, 1, 2), (-2, -5, 1), (-3, -6, 2)))
+    return exact(C, H_eff, dt)
+
+def exact_bond(tensors, dt, **kwargs):
+    M, L, R = tensors
+    H_eff = ncon((L, R), 
+                 ((-1, -3, 1), (-2, -4, 1)))
+    return exact(M, H_eff, dt)
+
+def exact(tensor, H_eff, dt, **options):
     # Calculate dimension of the space the vectorized tensor lives in
     vector_dim = np.product(tensor.shape)
     tensor_vec = tensor.flatten()
     # Reshape H_eff to be square matrix in vectorised space
     H_eff_mat = H_eff.reshape((vector_dim, vector_dim))
-    mat_exp = la.expm(-0.5*1j*dt*H_eff_mat)
+    mat_exp = la.expm(-1j*dt*H_eff_mat)
     tensor_evolved = tensor_vec @ mat_exp
     return tensor_evolved.reshape(tensor.shape)
+
 
 def diagonal(tensor, H_eff, dt):
     vector_dim = np.product(tensor.shape)
@@ -24,7 +116,7 @@ def diagonal(tensor, H_eff, dt):
     # Reshape H_eff to be square matrix in vectorised space
     H_eff_mat = H_eff.reshape((vector_dim, vector_dim))
     eigvals, eigvecs = la.eigh(H_eff_mat)
-    expvals = np.exp(-0.5*1j*dt*eigvals)
+    expvals = np.exp(-1j*dt*eigvals)
     mat_exp = eigvecs @ np.diag(expvals) @ eigvecs.conj().T
     tensor_evolved = tensor_vec @ mat_exp
     return tensor_evolved.reshape(tensor.shape)
@@ -37,32 +129,13 @@ def fast(tensor, H_eff, dt):
     H_eff_mat = H_eff.reshape((vector_dim, vector_dim))
     # mat_exp   = la.expm(-0.5*1j*dt*H_eff_mat)
     #           = 1 - 0.5*1j*dt*H_eff_mat + O(dt^2)
-    mat_exp_approx = np.eye(vector_dim) - 0.5*1j*dt*H_eff_mat
+    mat_exp_approx = np.eye(vector_dim) - 1j*dt*H_eff_mat
     tensor_evolved = tensor_vec @ mat_exp_approx
     return tensor_evolved.reshape(tensor.shape)
 
-def fast_old(tensor, H_eff, dt, **kwargs):
-    """
-    First order approximation to matrix exponential
-    """
-    # full_dim = np.prod(H_eff.shape)
-    # sq_dim = int(np.sqrt(full_dim))
-    # id_mat = np.eye(sq_dim)
-    # id_full = id_mat.reshape(H_eff.shape)*(1+0j)
 
-    # assert id_full.shape==H_eff.shape, 'identity built wrong'
-    
-    if len(tensor.shape) == 3:
-        return tensor - 1j * (dt/2) * ncon((tensor, H_eff),
-                                            ((1, 2, 3), (1, 2, 3, -1, -2, -3)))
-    elif len(tensor.shape) == 2:
-        return tensor - 1j * (dt/2) * ncon((tensor, H_eff),
-                                            ((1, 2), (1, 2, -1, -2)))
-    else:
-        raise ValueError("Tensor shape not compatible with 1site tdvp")
-    # return id_full - 0.5*1j*dt*H_eff
 
-# New and improved Lanczos method
+# Helper functions for new and improved Lanczos method
 
 # Split methods for centred tensor and bond-centred tensor
 
@@ -134,44 +207,6 @@ def lanczos_parts(C, W, L, R,
     # print("Hit iteration limit before convergence")
     # print("Norm / epsilon: ", round(np.real(norm/epsilon), 4))
     return basis, H_subspace_matrix(H_cons)
-
-def lanczos_center(C, W, L, R,
-                dt=0.01,
-                epsilon=1e-5,
-                max_iters=16):
-    """
-    Method for evolving a center gauge tensor as exp(-i H_eff dt)|C>
-    
-    Parameters:
-        C, W, L, R: numpy array
-            Centre tensor, local mpo tensor, left and right effective environments
-        dt: float, default is 0.01
-            Time step (this is halved outside the function for tdvp sweeping)
-        epsilon: float, default is 1e-5
-            Cutoff amplitude. Stops you from amplifying division-by small errors. 
-            This can happen if your initial vector is in a small eigensubspace.
-            Note that this is *not* the precision control.
-        max_iters: int or NoneType, default is 100
-            Maximum dimension of Krylov space built. The calculation is precise on
-            all vectors up to {x, Hx, ..., H^(max_iters)x}. As such, errors should be 
-            roughly of the order ~(dt*|H|)^(max_iters+1) 
-            For reference, for random input tensors with d=4, D=32, max_iters=16 
-            errors are ~1e-10, with a speed-up ~4000x
-
-    """
-    if not max_iters:
-        max_iters = np.prod(np.shape(C))
-        print(f"Iterations unlimited; full space has dimension {np.prod(np.shape(C))}")
-    basis, H_mat = lanczos_parts(C, W, L, R, epsilon, max_iters)
-    exp_H_mat = la.expm(-1j*dt*H_mat)
-    first_col = exp_H_mat[:,0]
-    evolved_C = la.norm(C)*sum([C_i*H_i0 for C_i, H_i0 in zip(basis, first_col)]) 
-    # We are computing exp(-iHdt).C
-    # C = norm(C)* first basis vector
-    # the first basis vector picks out the first column of the matrix
-    # Could do this with numpy, but shouldnt make a masive difference 
-    return evolved_C
-
 
 # Lanczos for bond centred
 
@@ -258,33 +293,7 @@ def lanczos_parts_bond(M, L, R, epsilon=1e-6, max_iters=100):
         # print("Norm / epsilon:", round(np.real(norm / epsilon), 4))
     return basis, H_subspace_matrix(H_cols)
 
-def lanczos_bond(M, L, R, dt=0.01, epsilon=1e-5, max_iters=16):
-    """
-    Apply exp(-i H_eff dt) to a bond-centred tensor via Lanczos in the Krylov subspace.
-    Parameters:
-        M : array
-            Bond-centred tensor (shape (D_left, D_right)).
-        L, R : arrays
-            Left/right effective environments for apply_Heff_bond.
-        dt : float
-            Time step (halved outside here if using TDVP sweeps; this applies the full step).
-        epsilon : float
-            Cutoff for Lanczos norm convergence.
-        max_iters : int or None
-            Maximum Krylov dimension. If None or 0, use full flattened dimension.
-    Returns:
-        M_evolved : array
-            The evolved bond tensor: exp(-i H_eff dt) |M>.
-    """
-    if not max_iters:
-        max_iters = np.prod(np.shape(M))
-        print(f"Iterations unlimited; full space has dimension {np.prod(np.shape(M))}")
 
-    basis, H_mat = lanczos_parts_bond(M, L, R, epsilon=epsilon, max_iters=max_iters)
-    U = la.expm(-0.5j * dt * H_mat)
-    first_col = U[:, 0]
-    M_evolved = la.norm(M) * sum(M_i * U_i0 for M_i, U_i0 in zip(basis, first_col))
-    return M_evolved
 
 
 

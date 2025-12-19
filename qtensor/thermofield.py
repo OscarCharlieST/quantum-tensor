@@ -10,9 +10,10 @@ def inf_T_thermofield(N, D, noise=0):
     """
     Builds an infinite temperature thermofield with N sites and bond dimension D
     """
-    M_L = np.zeros((4, D))
-    M_L[:,0] = np.array([1, 0, 0, 1])
-    M_R = M_L
+    M_L = np.zeros((4, 1, D))
+    M_L[:,0,0] = np.array([1, 0, 0, 1])
+    M_R = np.zeros((4, D, 1))
+    M_R[:,0,0] = np.array([1, 0, 0, 1])
     M = np.zeros((4,D,D))
     M[:, 0, 0] = np.array([1, 0, 0, 1])
     Ms = [M for _ in range(N-2)]
@@ -72,14 +73,14 @@ def thermofield_hamiltonian(H):
 
 def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True, method=None):
     if not initial_state:    
-        state = sim.inf_T_thermofield_variational(N, D)
+        state = inf_T_thermofield(N, D)
     else:
         state = copy.deepcopy(initial_state)
         # initial state must be infinite temperature
         pass
     if not method:
-        method = methods.exact
-    _, expectations = sim.tdvp_new(state, H, -1j*beta*1/4, steps, method, 
+        method = methods.lanczos_method()
+    _, expectations = sim.tdvp(state, H, -1j*beta*1/4, steps, method, 
                                    history=True, extensive_operators=[H])
     time = np.abs(list(expectations.keys()))*4
     energy = np.real([opexp[0] for opexp in expectations.values()])/2
@@ -92,6 +93,16 @@ def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True
     return state, time, energy
 
 def near_thermal(H, profile, D, steps=100, initial_state=None):
+    """
+    Docstring for near_thermal
+    
+    :param H: Symmetric thermofield hamiltonian
+    :param profile: Description
+    :param D: Description
+    :param steps: Description
+    :param initial_state: Description
+    """
+
     assert len(H.sites) == len(profile), "temp profile incorrect length"
     
     b_profile_r = (profile + np.roll(profile, -1)) / 2 # Bond to the left of site avg temp
