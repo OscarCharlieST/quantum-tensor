@@ -47,6 +47,9 @@ class mpo:
                       copy.deepcopy(self.l, memo), copy.deepcopy(self.r, memo))
         return new_mpo
 
+    def __shape__(self):
+        return (self.d, self.d, self.D, self.D)
+
     # more complex functions
     def combine(self, mpo2, after=True):
         """
@@ -74,16 +77,83 @@ class mpo:
                 W2 = mpo2.tensors[site]
             if after:
                 Wnew = ncon((W1, W2), ((-1, 1, -3, -5), (1, -2, -4, -6)))
-                self.l = np.concatenate((l1, l2))
-                self.r = np.concatenate((r1, r2))
+                # self.l = np.concatenate((l1, l2))
+                self.l = np.kron(l1, l2)
+                # self.r = np.concatenate((r1, r2))
+                self.r = np.kron(r1, r2)
+
             else:
                 Wnew = ncon((W2, W1), ((-1, 1, -3, -5), (1, -2, -4, -6)))
-                self.l = np.concatenate((l2, l1))
-                self.r = np.concatenate((r2, r1))
+                # self.l = np.concatenate((l2, l1))
+                self.l = np.kron(l2, l1)
+                # self.r = np.concatenate((r2, r1))
+                self.r = np.kron(r2, r1)
             sp = Wnew.shape
-            Wnew.reshape(sp[0], sp[1], sp[2]*sp[3], sp[4]*sp[5])
+            Wnew = Wnew.reshape(sp[0], sp[1], sp[2]*sp[3], sp[4]*sp[5])
             self.tensors[site] = Wnew
         self.D = self.l.shape[0]
+
+    def __add__(self, other, sign=1):
+        """
+        Addition of two MPOs, as a direct sum (not particularly efficient).
+        Returns new MPO object.
+        Does so without changing data of either MPO.
+        """
+        assert self.d == other.d, "MPOs must have the same local dimension"
+        l_new = np.concatenate((self.l, other.l))
+        r_new = np.concatenate((self.r, other.r))
+        chi_new = l_new.shape[0]
+        new_mpo = copy.deepcopy(self)
+        new_mpo.l = l_new
+        new_mpo.r = r_new
+        new_mpo.D = chi_new 
+        for site in set(self.sites).union(set(other.sites)):
+            W = np.zeros((self.d, self.d, chi_new, chi_new), dtype=np.complex64)
+            # Setting default values to identity on sites where MPO isnt explicitly supported.
+            W[:, :, 0, 0] = np.eye(self.d)
+            W[:, :, self.D-1, self.D-1] = np.eye(self.d)
+            W[:, :, self.D, self.D] = np.eye(self.d)
+            W[:, :, -1, -1] = np.eye(self.d)
+            if site in self.sites:
+                W[:, :, :self.D, :self.D] = self.tensors[site]
+            if site in other.sites:
+                W[:, :, self.D:, self.D:] = sign * other.tensors[site]
+            new_mpo.tensors[site] = W
+        return new_mpo
+    
+    def __sub__(self, other):
+        return self.__add__(other, sign=-1)
+    
+    def __matmul__(self, other):
+        """
+        Matrix multiplication of two MPOs, which is just composition.
+        Returns new MPO object.
+        Does so without changing data of either MPO.
+        """
+        new_mpo = copy.deepcopy(self)
+        new_mpo.combine(other, after=False)
+        return new_mpo
+
+    def trace(self, system_size=None):
+        """
+        Trace over the physical indices of the MPO and contract virtual indices.
+        Returns a scalar.
+        If system_size is provided, applies a correction factor due to tracing implied identities.
+        """
+        correction_factor = 1
+        if system_size:
+            correction_factor = self.d ** (system_size - len(self.sites))
+        tensors_copy = copy.deepcopy(self.tensors)
+        for site in sorted(self.sites):
+            W = tensors_copy[site]
+            W_traced = np.trace(W, axis1=0, axis2=1)
+            tensors_copy[site] = W_traced
+        new_l = self.l
+        for site in sorted(self.sites):
+            new_l = new_l @ tensors_copy[site]
+        return (new_l @ self.r) * correction_factor
+
+
         
 
 
@@ -429,3 +499,15 @@ def dhi_dt(state, site, J=1, g=-0.525):
     commutator = ising_commutator(site, J, g)
     thf_commutator = symmetric_thermofield(commutator)
     return -1j*local_expect(state, thf_commutator)
+
+def compose(*operators):
+    """
+    Compose multiple MPOs into a single MPO.
+    The resulting MPO is the product of the input MPOs in the order they are given.
+    """
+    if len(operators) == 0:
+        raise ValueError("At least one operator must be provided")
+    result = copy.deepcopy(operators[0])
+    for op in operators[1:]:
+        result.combine(op, after=True)
+    return result
