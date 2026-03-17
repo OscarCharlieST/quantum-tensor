@@ -205,7 +205,7 @@ def centralize_state(statedict, c_site, max_bond_dim):
         return left_orthogonal_state(statedict, max_bond_dim)
     if c_site == min(statedict.keys()):
         return right_orthogonal_state(statedict, max_bond_dim)
-    
+
     psi_centre = {}
     # Handle left side of chain
     sites_l = sorted([i for i in statedict.keys() if i < c_site])
@@ -222,6 +222,7 @@ def centralize_state(statedict, c_site, max_bond_dim):
     sites_r = sorted([i for i in statedict.keys() if i > c_site], reverse=True)
     M = statedict[sites_r[0]]
     Gr, M_rorth = right_orthogonal_tensor(M, max_bond_dim)
+    psi_centre[sites_r[0]] = M_rorth
     for i in sites_r[1:]:
         M = statedict[i]
         M_eff = M @ Gr
@@ -287,3 +288,71 @@ def spin_up(N, D, noise=0.0):
         state.left_orthogonal()
         return state 
     
+def entropy(state, site=0):
+    """
+    Compute the entanglement entropy across the bond to the right of site
+    """
+    sites = sorted(state.sites)
+    assert site in sites, "Site not in state."
+    # Centralize state at site+1 and compute entropy from purity
+    # Purity is trace of square of right environment to site.
+    psi_centre = centralize_state(state.tensors, site+1, max_bond_dim=np.inf)
+    centre_tensor = psi_centre[site+1]
+    R = ncon((centre_tensor, centre_tensor.conj()), ((1, -1, 2), (1, -2, 2) ))
+    P = np.real(ncon((R, R), ((1, 2), (2, 1))))
+    entropy = -np.log2(P)
+    return entropy
+
+def entropy_diagonal(state, site=None):
+    sites = sorted(state.sites)
+    if not site:
+        site = max(sites)//2 + 1
+    else:
+        assert site in sites, "Site not in state."
+    working_state = copy.deepcopy(state)
+    working_state.left_orthogonal()
+
+    R = np.eye(1)
+    for i in sorted(sites[site+1:], reverse=True):
+        A = working_state[i]
+        R = ncon((A, A.conj(), R),
+                 ((1, -1, 2), (1, -2, 3), (2, 3)))
+    P = np.real(ncon((R, R), ((1, 2), (1, 2))))
+    entropy = -np.log2(P)
+    return entropy
+
+def right_environments(state):
+    sites = sorted(state.sites)
+    psi_left = left_orthogonal_state(state.tensors, max_bond_dim=np.inf)
+    R = {}
+    R_site = np.eye(1)
+    for site in sorted(sites, reverse=True):
+        R_site = ncon((psi_left[site], psi_left[site].conj(), R_site),
+                      ((1, -1, 2), (1, -2, 3), (2, 3)))
+        R[site] = R_site
+    return R
+
+def purities(state):
+    R = right_environments(state)
+    P = {i: np.real(np.trace(R[i]@R[i])) for i in R}
+    return P
+
+def entropies(state):
+    P = purities(state)
+    entropies = {i: np.log2(P[i]) for i in P}
+    return entropies
+
+def entropy_left(state, site=0):
+    """
+    Compute the entanglement entropy across the bond to the right of site
+    Use left-orthogonal form of state, contract from the right
+    """
+    sites = sorted(state.sites)
+    assert site in sites, "Site not in state."
+    # Centralize state at site+1 and compute entropy from purity
+    # Purity is trace of square of right environment to site.
+    psi_left = left_orthogonal_state(state.tensors, max_bond_dim=np.inf)
+    R = ncon((centre_tensor, centre_tensor.conj()), ((1, -1, 2), (1, -2, 2) ))
+    P = np.real(ncon((R, R), ((1, 2), (2, 1))))
+    entropy = -np.log2(P)
+    return entropy
