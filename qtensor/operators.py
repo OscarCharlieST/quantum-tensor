@@ -196,7 +196,7 @@ def tilted_ising(J=1, h=0.25, g=-0.525, N=1):
     r = np.array([0, 0, 1]) # contract with these left and right of the MPO chain
     return uniform_MPO(W, l, r, N)
 
-def thermofield_hamiltonian(H):
+def thermofield_hamiltonian(H, asym=False):
     """
     Takes a specific form of2 site hamiltonian H
     where Hl, Hr are the left and right of the two site term
@@ -217,6 +217,9 @@ def thermofield_hamiltonian(H):
 
     Note that it only works where the two local terms can be written as tensor product over the two sites. 
     """
+    a=1
+    if asym:
+        a=-1
     H_th = []
     for i in H.sites:
         W = H[i]
@@ -227,8 +230,8 @@ def thermofield_hamiltonian(H):
         W_th = np.zeros((4, 4, 4, 4), dtype=np.complex64)
         W_th[:, :, 0, 0] = np.kron(np.eye(2), np.eye(2))
         W_th[:, :, 0, 1] = np.kron(Hl, np.eye(2))
-        W_th[:, :, 0, 2] = np.kron(np.eye(2), Hl)
-        W_th[:, :, 0, 3] = np.kron(h, np.eye(2)) + np.kron(np.eye(2), h)
+        W_th[:, :, 0, 2] = a * np.kron(np.eye(2), Hl)
+        W_th[:, :, 0, 3] = np.kron(h, np.eye(2)) + a * np.kron(np.eye(2), h)
         W_th[:, :, 1, 3] = np.kron(Hr, np.eye(2))
         W_th[:, :, 2, 3] = np.kron(np.eye(2), Hr)
         W_th[:, :, 3, 3] = np.kron(np.eye(2), np.eye(2))

@@ -8,14 +8,14 @@ import numpy as np
 
 def plot_energy_density(state, H_terms, ax=None):
     if not ax:            
-        fig, ax = plt.subplots(1,1)
-    energy_density = [ops.local_expect(state, H_terms[i]) 
+        _, ax = plt.subplots(1,1)
+    energy_density = [np.real(ops.local_expect(state, H_terms[i]))
                       for i in sorted(H_terms.keys())]
     ax.plot(list(state.sites)[:-1], energy_density)
     ax.set_ylabel(r'$E$')
     ax.set_xlabel('Bond')
 
-    return fig, ax
+    return ax
 
 def plot_energy_density_evolution(state_history, H_terms, t_f=None, block_len=1, ax=None, bond=None):
     """
@@ -66,7 +66,7 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None, block_len=1,
 
     ax[2,].set_xlabel("Time")
     ax[2,].set_ylabel(r'$dE/dt$')
-    dE_dt= [(bond_energy[i+1] - bond_energy[i])/
+    dE_dt = [(bond_energy[i+1] - bond_energy[i])/
             (times[i+1] - times[i])
             for i in range(len(bond_energy)-1)]
     
@@ -76,7 +76,7 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None, block_len=1,
     
     plt.show()
 
-    return fig, ax
+    return times, E_profiles, dE_dt
 
 def plot_spin_components_spatial(state):
     fig, ax = plt.subplots(1,1)
@@ -91,7 +91,11 @@ def plot_spin_components_spatial(state):
     ax.legend()
 
 def plot_entropy_evolution(state_history, 
-                           site=None, t_f=None, block_len=None, ax=None, show_max=False):
+                           site=None, t_f=None, block_len=None, ax=None,
+                           show_max=False):
+    """
+    Finds and plots part-chain entropy to the right of (site) as a function of time
+    """
     if not ax: 
         fig, ax = plt.subplots(1,1)
     times = sorted(np.abs(list(state_history.keys())))
@@ -101,16 +105,17 @@ def plot_entropy_evolution(state_history,
         times = [t for t in times if t <= t_f and t]
     if not site:
         site = max(state_history[times[0]].sites)//2
+
     entropies = [states.entropy(state_history[t], site) for t in times]
     ax.plot(times, entropies, label=f'Site {site}')
     ax.set_title(f'Entanglement Entropy at site {site}')
     ax.set_ylabel(r'$S_2$')
     ax.set_xlabel('Time')
     if show_max:
-        max_ent = np.log(np.max(state_history[max(times)][site].shape))
+        max_ent = np.log2(np.max(state_history[max(times)][site].shape))
         ax.axhline(max_ent, color='red', linestyle='--', label='Max Entropy')
     ax.legend()
-    
+    return entropies, times
 
 def plot_bond_dimension(state, ax=None, c=(1,0,0)):
     """
@@ -158,9 +163,70 @@ def overlap_evolution(state_hist_1, state_hist_2):
     t_2 = state_hist_2.keys()
     times = sorted(list(set(t_1).intersection(set(t_2))))
     assert len(times)!= 0 , "No shared times in state histories"
-    overlaps = [np.abs(states.overlap(state_hist_1[t], state_hist_2[t]))**2 for t in times]
+    overlaps = [np.abs(states.overlap(state_hist_1[t], state_hist_2[t])) for t in times]
     fig, ax = plt.subplots(1,1)
     ax.plot(times, overlaps)
     ax.set_xlabel('Time')
-    ax.set_ylabel(r'$ | \langle \psi | \phi \rangle | ^2 $')
+    ax.set_ylabel(r'$ | \langle \psi | \phi \rangle | $')
     return fig, ax
+
+def observable_evolution(history, obs,
+                         t_f=None, block_len=1,
+                         axs=None, color=None, label=None):
+    """
+    Plot the evolution of an observable for a single history.
+    """
+    times = np.array(sorted(history.keys()))[::block_len]
+
+    # Create axes if not provided
+    if axs is None:
+        fig, axs = plt.subplots(2, 1)
+        axs[0].set_ylabel(r'$\langle \hat O \rangle$')
+        axs[1].set_ylabel(r'$\frac{d}{dt} \langle \hat O \rangle$')
+        axs[1].set_xlabel(r'time')
+
+    # Apply time cutoff
+    if t_f is not None:
+        times = times[times < t_f]
+
+    # Compute expectation values
+    expects = np.array([ops.local_expect(history[t], obs) for t in times])
+
+    # Compute finite difference derivative
+    dt = times[1] - times[0]
+    rates = (expects[1:] - expects[:-1]) / dt
+
+    # Plot
+    axs[0].plot(times, expects, color=color, label=label)
+    axs[1].plot(times[:-1], rates, color=color)
+
+def compare_obs_evolution(histories, obs, labels=None, **kwargs):
+    """
+    Plot observable evolution for multiple histories on shared axes.
+    Any keyword arguments are forwarded to observable_evolution.
+    """
+    cmap = mpl.colormaps['magma']
+
+    # Create shared axes once
+    fig, axs = plt.subplots(2, 1, figsize=(8,8))
+    axs[0].set_ylabel(r'$\langle \hat O \rangle$')
+    axs[1].set_ylabel(r'$\frac{d}{dt} \langle \hat O \rangle$')
+    axs[1].set_xlabel(r'time')
+    if 'title' in kwargs:
+        title = kwargs.pop('title')
+        fig.suptitle(title)
+
+
+    # Forward axes to inner function
+    kwargs = dict(kwargs)  # copy so we can modify safely
+    kwargs['axs'] = axs
+
+    if not labels:
+        labels = [None] * len(histories)
+
+    # Plot each history
+    for i, hist in enumerate(histories):
+        label = labels[i]
+        color = cmap(i / len(histories))
+        observable_evolution(hist, obs, color=color, label=label, **kwargs)
+    axs[0].legend()

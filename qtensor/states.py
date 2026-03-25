@@ -95,6 +95,22 @@ class mps:
         self.centred = True
         self.bond_centred = False
         self.form = 'center'
+
+    def shapes(self, display=True):
+        top_str = ''
+        mid_str = ''
+        bot_str = ''
+        shapes = {}
+        for site in self.sites:
+            d, Dl, Dr = self.tensors[site].shape
+            shapes[site] = (d, Dl, Dr)
+            top_str += f'{Dl}---'
+            mid_str += '  | '
+            bot_str += f'  {d} '
+        top_str += f'{Dr}'
+        print(top_str)
+        print(mid_str)
+        print(bot_str)
     
 def left_orthogonal_tensor(M, max_bond_dim=np.inf):
     """
@@ -265,6 +281,59 @@ def random(N, d, D, seed=0):
     state = mps(statedict)
     return state
 
+def haar_random_unitary(n: int, seed=0) -> np.ndarray:
+    """
+    Generate an n x n Haar-random unitary matrix.
+
+    Parameters:
+        n (int): Dimension of the unitary matrix (n > 0)
+
+    Returns:
+        np.ndarray: Haar-distributed unitary matrix of shape (n, n)
+    """
+    np.random.seed(seed)
+    
+    # Step 1: Create a random complex matrix with entries from N(0,1) + i*N(0,1)
+    z = (np.random.randn(n, n) + 1j * np.random.randn(n, n)) / np.sqrt(2)
+
+    # Step 2: QR decomposition
+    q, r = np.linalg.qr(z)
+
+    # Step 3: Normalize phases to ensure Haar distribution
+    d = np.diag(r)
+    ph = d / np.abs(d)  # Extract phases
+    q = q * ph
+
+    return q
+
+def unitary_random(L, d, D, seed=0):
+    """
+    Left-orthogonal random MPS generator from Haar-random unitary
+    """
+    
+    tensors = {}
+    Dr = 1
+    for site in np.arange(L-1):
+        Dl = Dr
+        Dr = min([Dl*d, D])
+        n = d*Dl
+        U = haar_random_unitary(n, seed+site)
+        M = U[:, :Dr].reshape(d, Dl, Dr)
+        tensors[site] = M
+    # final tensor should be D x d matrix, not 3 legged, 3rd leg should have bond dim 1
+    site = L-1
+    Dl = Dr # use previous Dr
+    Dr = 1
+    U = haar_random_unitary(d*Dl, seed+site)
+    M = U[:, :Dr].reshape(d, Dl, Dr)
+    tensors[site] = M
+    
+    state = mps(tensors)
+    state.left_orthogonal()
+    return state
+
+
+
 def spin_up(N, D, noise=0.0):
     """
     MPS representation of all spin up state
@@ -317,7 +386,7 @@ def entropy_diagonal(state, site=None):
         A = working_state[i]
         R = ncon((A, A.conj(), R),
                  ((1, -1, 2), (1, -2, 3), (2, 3)))
-    P = np.real(ncon((R, R), ((1, 2), (1, 2))))
+    P = np.real(ncon((R, R), ((1, 2), (2, 1))))
     entropy = -np.log2(P)
     return entropy
 
@@ -342,17 +411,17 @@ def entropies(state):
     entropies = {i: np.log2(P[i]) for i in P}
     return entropies
 
-def entropy_left(state, site=0):
-    """
-    Compute the entanglement entropy across the bond to the right of site
-    Use left-orthogonal form of state, contract from the right
-    """
-    sites = sorted(state.sites)
-    assert site in sites, "Site not in state."
-    # Centralize state at site+1 and compute entropy from purity
-    # Purity is trace of square of right environment to site.
-    psi_left = left_orthogonal_state(state.tensors, max_bond_dim=np.inf)
-    R = ncon((centre_tensor, centre_tensor.conj()), ((1, -1, 2), (1, -2, 2) ))
-    P = np.real(ncon((R, R), ((1, 2), (2, 1))))
-    entropy = -np.log2(P)
-    return entropy
+# def entropy_left(state, site=0):
+#     """
+#     Compute the entanglement entropy across the bond to the right of site
+#     Use left-orthogonal form of state, contract from the right
+#     """
+#     sites = sorted(state.sites)
+#     assert site in sites, "Site not in state."
+#     # Centralize state at site+1 and compute entropy from purity
+#     # Purity is trace of square of right environment to site.
+#     psi_left = left_orthogonal_state(state.tensors, max_bond_dim=np.inf)
+#     R = ncon((centre_tensor, centre_tensor.conj()), ((1, -1, 2), (1, -2, 2) ))
+#     P = np.real(ncon((R, R), ((1, 2), (2, 1))))
+#     entropy = -np.log2(P)
+#     return entropy

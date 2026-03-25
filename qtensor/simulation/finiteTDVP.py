@@ -64,6 +64,13 @@ def tdvp(state, operator, t_f, steps,
             expectations[t] = [ops.expect(state, op) for op in kwargs['extensive_operators']]
         state, L_con, _ = tdvp_sweep_r(state, operator, dt, L_con, R_con, method)
         state, _, R_con = tdvp_sweep_l(state, operator, dt, L_con, R_con, method) 
+        if 'termination_func' in kwargs:
+            terminate = kwargs['termination_func']
+            # signature should be f(state, t) = bool
+            # where True means simulation should terminate
+            if terminate(state, t):
+                print(f"Simulation terminated at t = {t}")
+                break
         step+=1
         b.update(step)
 
