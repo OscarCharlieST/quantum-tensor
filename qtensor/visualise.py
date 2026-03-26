@@ -76,7 +76,7 @@ def plot_energy_density_evolution(state_history, H_terms, t_f=None, block_len=1,
     
     plt.show()
 
-    return times, E_profiles, dE_dt
+    return times, E_profiles
 
 def plot_spin_components_spatial(state):
     fig, ax = plt.subplots(1,1)

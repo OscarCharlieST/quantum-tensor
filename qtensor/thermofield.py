@@ -5,6 +5,7 @@ import qtensor.states as states
 import qtensor.operators as ops
 import qtensor.simulation.finiteTDVP as sim
 import qtensor.simulation.updatemethod as methods
+from ncon import ncon
 
 def inf_T_thermofield(N, D, noise=0):
     """
@@ -139,3 +140,45 @@ def near_thermal_first_order_deformed(D, beta_profile, J=1, h=0.25, g=-0.525, t=
     tf_fodg = thermofield_hamiltonian(fodh)
     state, _, _ = finite_T_thermofield(1, len(beta_profile), D, tf_fodg, steps, plot=False, method=sim.method_exact)
     return state
+
+def single_copy_expectation(psi, O):
+    """
+    Given an operator O on the un-doubled hilbert space and a thermofield state psi,
+    calculate the expectation of O as the expectation of (O x I).
+
+    This way of taking the expectation is no symmetric;
+    disentanglers can be applied to the auxilliary space. 
+
+    Parameters:     
+        psi: Thermofield MPS - doesn't have to be symmetric but does need to be on doubled
+          hilbert space
+        O: Local mpo on the single hilbert space      
+
+    Returns:
+        << O >>
+    """
+    psi = copy.deepcopy(psi)
+    op_sites = O.sites
+    min_site = min(op_sites)
+    psi.centralize(min_site)
+
+    l, r = O.l, O.r
+    d2, Dl, Dr = psi[min_site].shape
+    d = int(np.sqrt(d2))
+
+    L_con = ncon((np.eye(Dl), l),
+                 ((-1, -2), (-3,)))
+    
+    for site in op_sites:
+        A = psi[site]
+        _, Dl, Dr = A.shape
+        M = psi[site].reshape(d, d, Dl, Dr)
+        W = O[site]
+        L_con = ncon((L_con, M, M.conj(), W),
+                     ((1, 2, 3), (4, 6, 1, -1), (5, 6, 2, -2), (4, 5, 3, -3)))
+    return ncon((L_con, r),
+                ((1, 1, 2), (2, )))
+
+
+
+
