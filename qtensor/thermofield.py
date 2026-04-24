@@ -31,6 +31,19 @@ def th_onesite(A, site):
     W[:, :, 0, 0] = np.kron(A, np.eye(2)) + np.kron(np.eye(2), A)
     return ops.mpo([site, W], np.array([1,]), np.array([1,]))
 
+def tf_twosite(A, B, site_l):
+    """
+    Taskes two 2x2 matrices and returns AB_a + AB_b on each copy of Hilbert space
+    """
+    Wl = np.zeros((4, 4, 1, 2))
+    Wr = np.zeros((4, 4, 2, 1))
+    Wl[:, :, 0, 0] = np.kron(A, np.eye(2))
+    Wl[:, :, 0, 1] = np.kron(np.eye(2), A)
+    Wr[:, :, 0, 0] = np.kron(B, np.eye(2))
+    Wr[:, :, 1, 0] = np.kron(np.eye(2), B)
+    return ops.mpo([(site_l, Wl), (site_l+1, Wr)], np.array([1, ]), np.array([1,]))
+
+
 def thermofield_hamiltonian(H, asym=False):
     """
     Takes a specific form of2 site hamiltonian H
@@ -76,7 +89,9 @@ def thermofield_hamiltonian(H, asym=False):
     r = np.array([0, 0, 0, 1])
     return ops.mpo(H_th, l, r)
 
-def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True, method=None):
+def finite_T_thermofield(beta,  H, steps=100, 
+                         initial_state=None, N=2, D=4,
+                         plot=True, method=None):
     if not initial_state:    
         state = inf_T_thermofield(N, D)
     else:
@@ -84,7 +99,7 @@ def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True
         # initial state must be infinite temperature
         pass
     if not method:
-        method = methods.lanczos_method()
+        method = methods.lanczos_method(max_iters=8)
     _, expectations = sim.tdvp(state, H, -1j*beta*1/4, steps, method, 
                                    history=True, extensive_operators=[H])
     time = np.abs(list(expectations.keys()))*4
@@ -97,13 +112,13 @@ def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True
         print("Energy at finite temperature:", energy[-1])
     return state, time, energy
 
-def near_thermal(H, profile, D, steps=100, initial_state=None):
+def near_thermal(H, profile, initial_state, steps=100):
     """
-    Docstring for near_thermal
+    Perform imaginary time evolution with a spatially varying temperature profile.
     
     :param H: Symmetric thermofield hamiltonian
-    :param profile: Description
-    :param D: Description
+    :param profile: inverse temperature profile 
+    :param D: max bond dimension
     :param steps: Description
     :param initial_state: Description
     """
@@ -115,15 +130,42 @@ def near_thermal(H, profile, D, steps=100, initial_state=None):
     H_new = []
     for site, beta, br in zip(H.sites, profile, b_profile_r):
         W = copy.copy(H[site]) # don't actually edit the hamiltonian
-        # need to sort out sign information so positive and negative beta are allowed
-        # Not perfect but does the job - some issues wherever beta changes sign
-        W[:, :, :-1, 1:-1] = W[:, :, :-1, 1:-1] * br
+        W[:, :, :-1, 1:-1] = W[:, :, :-1, 1:-1] * br # twosite terms get average temperature across the bond
         W[:, :, 1:-1, 1:] = W[:, :, 1:-1, 1:]
-        W[:, :, 0, -1] = W[:, :, 0, -1] * beta # onesite term gets both sqrts at once
+        W[:, :, 0, -1] = W[:, :, 0, -1] * beta # onesite term get local temperature
         H_new.append((site, W))
 
     H_eff = ops.mpo(H_new, H.l, H.r)
-    state, _, _ = finite_T_thermofield(1, len(profile), D, H_eff, steps=steps, initial_state=initial_state,
+    state, _, _ = finite_T_thermofield(1, H_eff, initial_state=initial_state,
+                                       steps=steps, plot=False)
+    return state
+
+def near_thermal_delta_function(H, bond, delta_beta, initial_state, steps=10):
+    """
+    Perform imaginary time evolution with a delta function temperature profile, i.e. a local quench in temperature
+    :param H: Symmetric thermofield hamiltonian
+    :param site: Bond between (site, site+1) to apply generator to
+    :param delta_beta: change in inverse temperature at the bond.
+    :param initial_state: state to apply generator to - should be thermal at some temperature
+    """
+
+    root_beta = np.sqrt(delta_beta + 0j) # make complex to avoid issues with negative delta beta
+
+    H_new = []
+    for site in H.sites:
+        if not site==bond and not site==bond+1:
+            W = copy.copy(H[site]) # don't actually edit the hamiltonian
+            W[:, :, :-1, 1:] = W[:, :, :-1, 1:] * 0 # Set everything to zero
+            H_new.append((site, W))
+        else:
+            W = copy.copy(H[site])
+            W[:, :, :-1, 1:] = W[:, :, :-1, 1:] * root_beta 
+            W[:, :, 0, -1] = W[:, :, 0, -1] * root_beta
+            H_new.append((site, W))
+
+    H_eff = ops.mpo(H_new, H.l, H.r)
+    state, _, _ = finite_T_thermofield(1, H_eff, steps=steps,
+                                       initial_state=initial_state,
                                        plot=False)
     return state
 

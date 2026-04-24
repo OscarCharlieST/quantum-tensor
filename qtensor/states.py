@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-`
 import os
 import copy
+import h5py
 import qtensor.operators as ops
 import scipy.linalg as la
 import numpy as np
@@ -61,6 +62,19 @@ class mps:
     def __len__(self):
         return len(self.tensors)
     
+
+    def save(self, filename, **kwargs):
+        """
+        Save the MPS tensors to an h5 file.
+        Pass a 'params' kwarg as a dictionary of key:value pairs of any metadata
+        """
+        with h5py.File(filename, "w") as f:
+            for site in sorted(self.sites):
+                f.create_dataset(f"{site}", data=self.tensors[site])
+            if 'params' in kwargs:
+                for key, value in kwargs['params'].items():
+                    f.attrs[key] = value
+    
     def L(self):
         return self.tensors[min(self.sites)]
     
@@ -111,6 +125,30 @@ class mps:
         print(top_str)
         print(mid_str)
         print(bot_str)
+
+    def apply(self, operator, max_bond_dim=np.inf):
+        """
+        Apply an MPO operator to the MPS state, and recompress to max_bond_dim if nessecary.
+        """
+        for site in operator.sites:
+            M = self.tensors[site]
+            W = operator[site]
+            d, Dl, Dr = M.shape
+            w_d, _, w_Dl, w_Dr = W.shape
+            assert d == w_d, "Physical dimension of operator and state do not match."
+            M_new = ncon((W, M), ((1, -1, -3, -5), (1, -2, -4)))
+            if site == min(operator.sites):
+                M_new = ncon((M_new, operator.l), 
+                             ((-1, -2, 3, -4, -5), (3,)))
+                M_new = M_new.reshape(d, Dl, Dr*w_Dr)
+            elif site == max(operator.sites):
+                M_new = ncon((M_new, operator.r), 
+                             ((-1, -2, -3, -4, 5), (5,))) 
+                M_new = M_new.reshape(d, Dl*w_Dl, Dr) 
+            else:
+                M_new = M_new.reshape(d, Dl*w_Dl, Dr*w_Dr)
+            self.tensors[site] = M_new
+        self.left_orthogonal(max_bond_dim)
     
 def left_orthogonal_tensor(M, max_bond_dim=np.inf):
     """
@@ -357,6 +395,39 @@ def spin_up(N, D, noise=0.0):
         state.left_orthogonal()
         return state 
     
+def spin_product(L, D, theta=0.0, phi=0.0):
+    """
+    MPS representation of generic spin product state
+    """
+    if type(theta) == float:
+        theta = [theta for _ in range(L)]
+    if type(phi) == float:
+        phi = [phi for _ in range(L)]
+
+    rotated_tensors = {}
+    state = spin_up(L, D)
+    sites = np.arange(L)
+    for i in sites:
+        ten = state[i]
+        rot_mat = np.array([[np.cos(theta[i]/2), -np.sin(theta[i]/2)*np.exp(-1j*phi[i])],
+                            [np.sin(theta[i]/2)*np.exp(1j*phi[i]), np.cos(theta[i]/2)]])
+        rotated_tensors[i] = ncon((rot_mat, ten), ([-1, 1], [1, -2, -3]))
+    rotated_state = mps(rotated_tensors)
+    return rotated_state
+
+def rand_product(L, D, seed=42, uniform=False):
+    """
+    MPS representation of randomly aligned spin product state
+    """
+    rng = np.random.default_rng(seed) 
+    if uniform:
+        theta = rng.uniform(0, np.pi)
+        phi = rng.uniform(0, 2*np.pi)
+    else:
+        theta = rng.uniform(0, np.pi, size=L)
+        phi = rng.uniform(0, 2*np.pi, size=L)
+    return spin_product(L, D, theta, phi)
+    
 def entropy(state, site=0):
     """
     Compute the entanglement entropy across the bond to the right of site
@@ -369,7 +440,21 @@ def entropy(state, site=0):
     centre_tensor = psi_centre[site+1]
     R = ncon((centre_tensor, centre_tensor.conj()), ((1, -1, 2), (1, -2, 2) ))
     P = np.real(ncon((R, R), ((1, 2), (2, 1))))
-    entropy = -np.log2(P)
+    entropy = -np.log(P)
+    return entropy
+
+def vn_entropy(state, site=0):
+    """
+    Compute the von Neumann entropy across the bond to the right of site
+    """
+    sites = sorted(state.sites)
+    assert site in sites, "Site not in state."
+    psi_centre = centralize_state(state.tensors, site+1, max_bond_dim=np.inf)
+    centre_tensor = psi_centre[site+1]
+    R = ncon((centre_tensor, centre_tensor.conj()), ((1, -1, 2), (1, -2, 2) ))
+    # Diagonalise to get schmidt values
+    evals, _ = la.eig(R)
+    entropy = -np.sum(evals * np.log(evals))
     return entropy
 
 def entropy_diagonal(state, site=None):
@@ -425,3 +510,18 @@ def entropies(state):
 #     P = np.real(ncon((R, R), ((1, 2), (2, 1))))
 #     entropy = -np.log2(P)
 #     return entropy
+
+####################################################################################
+
+def load_mps(filename, verbose=True):
+    """
+    Load an MPS from an h5 file. Returns an mps object, and any metadata.
+    """
+    with h5py.File(filename, "r") as f:
+        arrays = {int(key): f[key][...] for key in f.keys()}
+        if verbose:
+            print("Metadata:")
+            for key, value in f.attrs.items():
+                print(f"  {key}: {value}")
+        metadata = f.attrs
+    return mps(arrays), metadata 

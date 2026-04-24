@@ -182,7 +182,7 @@ def tilted_ising(J=1, h=0.25, g=-0.525, N=1):
     """
     Default parameters taken from 1702.08894
     Construct the tilted Ising Hamiltonian for N spins as an MPO.
-    H = -J z_i z_i+1 + h z_i + g x_i
+    H = J z_i z_i+1 + h z_i + g x_i
     where z_i and x_i are the Pauli Z and X operators, respectively.
     """
     x, z = [pauli('x'), pauli('z')]
@@ -432,14 +432,12 @@ def pauli(i):
         If the input string is not one of 'x', 'y', or 'z'.
 
     """
-    if i == 'x':
-        return np.array([[0, 1], [1, 0]])
-    elif i == 'y':
-        return np.array([[0, -1j], [1j, 0]])
-    elif i == 'z':
-        return np.array([[1, 0], [0, -1]])
-    else:
-        raise ValueError("Invalid input: must be one of 'x', 'y', or 'z'.")
+    pauli_matrices = {
+        'x': np.array([[0, 1], [1, 0]]),
+        'y': np.array([[0, -1j], [1j, 0]]), 
+        'z': np.array([[1, 0], [0, -1]])
+        }
+    return pauli_matrices[i]
 
 def first_order_deformation_generator(beta_profile, J=1, h=0.25, g=-0.525, t=1.0):
     """
@@ -514,3 +512,26 @@ def compose(*operators):
     for op in operators[1:]:
         result.combine(op, after=True)
     return result
+
+def apply_operator(state, operator, max_bond_dim=None):
+    """
+    ### Not finished 
+    
+    Apply an MPO to a state, and absorb the result into a new MPS.
+    Currently only works for extensive operators.
+    """
+
+    assert set(state.sites) == set(operator.sites), "MPS and MPO sites do not match"
+
+    sites = sorted(state.sites)
+
+    left_tensor = state[sites[0]]
+    left_op = operator[sites[0]]
+    new_left_tensor = ncon((left_tensor, left_op, op.l),
+                           ((1, -1, -3), (1)))
+
+    for site in sorted(state.sites[1:-1]):
+        current_tensor = state[site]
+        current_op = operator[site]
+        new_tensor = ncon((current_tensor, current_op),
+                          ((1, -1, -3), ))

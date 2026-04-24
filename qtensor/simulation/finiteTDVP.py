@@ -32,6 +32,7 @@ Indexing:
 def tdvp(state, operator, t_f, steps, 
          method=methods.lanczos_method(epsilon=1e-5, max_iters=16),
          history=False, 
+         history_interval=1,
          verbose=False, 
          **kwargs):
     """
@@ -56,8 +57,9 @@ def tdvp(state, operator, t_f, steps,
         if verbose:
             print(f't: {t:.3f}')
         if history:
-            now_state = copy.copy(state)
-            state_history[t] = now_state   
+            if step % history_interval == 0:
+                now_state = copy.copy(state)
+                state_history[t] = now_state   
         if 'operators' in kwargs:
             expectations[t] = [ops.local_expect(state, op) for op in kwargs['operators']]
         if 'extensive_operators' in kwargs:
