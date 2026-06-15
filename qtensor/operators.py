@@ -47,6 +47,9 @@ class mpo:
                       copy.deepcopy(self.l, memo), copy.deepcopy(self.r, memo))
         return new_mpo
 
+    def __shape__(self):
+        return (self.d, self.d, self.D, self.D)
+
     # more complex functions
     def combine(self, mpo2, after=True):
         """
@@ -74,16 +77,83 @@ class mpo:
                 W2 = mpo2.tensors[site]
             if after:
                 Wnew = ncon((W1, W2), ((-1, 1, -3, -5), (1, -2, -4, -6)))
-                self.l = np.concatenate((l1, l2))
-                self.r = np.concatenate((r1, r2))
+                # self.l = np.concatenate((l1, l2))
+                self.l = np.kron(l1, l2)
+                # self.r = np.concatenate((r1, r2))
+                self.r = np.kron(r1, r2)
+
             else:
                 Wnew = ncon((W2, W1), ((-1, 1, -3, -5), (1, -2, -4, -6)))
-                self.l = np.concatenate((l2, l1))
-                self.r = np.concatenate((r2, r1))
+                # self.l = np.concatenate((l2, l1))
+                self.l = np.kron(l2, l1)
+                # self.r = np.concatenate((r2, r1))
+                self.r = np.kron(r2, r1)
             sp = Wnew.shape
-            Wnew.reshape(sp[0], sp[1], sp[2]*sp[3], sp[4]*sp[5])
+            Wnew = Wnew.reshape(sp[0], sp[1], sp[2]*sp[3], sp[4]*sp[5])
             self.tensors[site] = Wnew
         self.D = self.l.shape[0]
+
+    def __add__(self, other, sign=1):
+        """
+        Addition of two MPOs, as a direct sum (not particularly efficient).
+        Returns new MPO object.
+        Does so without changing data of either MPO.
+        """
+        assert self.d == other.d, "MPOs must have the same local dimension"
+        l_new = np.concatenate((self.l, other.l))
+        r_new = np.concatenate((self.r, other.r))
+        chi_new = l_new.shape[0]
+        new_mpo = copy.deepcopy(self)
+        new_mpo.l = l_new
+        new_mpo.r = r_new
+        new_mpo.D = chi_new 
+        for site in set(self.sites).union(set(other.sites)):
+            W = np.zeros((self.d, self.d, chi_new, chi_new), dtype=np.complex64)
+            # Setting default values to identity on sites where MPO isnt explicitly supported.
+            W[:, :, 0, 0] = np.eye(self.d)
+            W[:, :, self.D-1, self.D-1] = np.eye(self.d)
+            W[:, :, self.D, self.D] = np.eye(self.d)
+            W[:, :, -1, -1] = np.eye(self.d)
+            if site in self.sites:
+                W[:, :, :self.D, :self.D] = self.tensors[site]
+            if site in other.sites:
+                W[:, :, self.D:, self.D:] = sign * other.tensors[site]
+            new_mpo.tensors[site] = W
+        return new_mpo
+    
+    def __sub__(self, other):
+        return self.__add__(other, sign=-1)
+    
+    def __matmul__(self, other):
+        """
+        Matrix multiplication of two MPOs, which is just composition.
+        Returns new MPO object.
+        Does so without changing data of either MPO.
+        """
+        new_mpo = copy.deepcopy(self)
+        new_mpo.combine(other, after=False)
+        return new_mpo
+
+    def trace(self, system_size=None):
+        """
+        Trace over the physical indices of the MPO and contract virtual indices.
+        Returns a scalar.
+        If system_size is provided, applies a correction factor due to tracing implied identities.
+        """
+        correction_factor = 1
+        if system_size:
+            correction_factor = self.d ** (system_size - len(self.sites))
+        tensors_copy = copy.deepcopy(self.tensors)
+        for site in sorted(self.sites):
+            W = tensors_copy[site]
+            W_traced = np.trace(W, axis1=0, axis2=1)
+            tensors_copy[site] = W_traced
+        new_l = self.l
+        for site in sorted(self.sites):
+            new_l = new_l @ tensors_copy[site]
+        return (new_l @ self.r) * correction_factor
+
+
         
 
 
@@ -112,7 +182,7 @@ def tilted_ising(J=1, h=0.25, g=-0.525, N=1):
     """
     Default parameters taken from 1702.08894
     Construct the tilted Ising Hamiltonian for N spins as an MPO.
-    H = -J z_i z_i+1 + h z_i + g x_i
+    H = J z_i z_i+1 + h z_i + g x_i
     where z_i and x_i are the Pauli Z and X operators, respectively.
     """
     x, z = [pauli('x'), pauli('z')]
@@ -126,7 +196,7 @@ def tilted_ising(J=1, h=0.25, g=-0.525, N=1):
     r = np.array([0, 0, 1]) # contract with these left and right of the MPO chain
     return uniform_MPO(W, l, r, N)
 
-def thermofield_hamiltonian(H):
+def thermofield_hamiltonian(H, asym=False):
     """
     Takes a specific form of2 site hamiltonian H
     where Hl, Hr are the left and right of the two site term
@@ -147,6 +217,9 @@ def thermofield_hamiltonian(H):
 
     Note that it only works where the two local terms can be written as tensor product over the two sites. 
     """
+    a=1
+    if asym:
+        a=-1
     H_th = []
     for i in H.sites:
         W = H[i]
@@ -157,8 +230,8 @@ def thermofield_hamiltonian(H):
         W_th = np.zeros((4, 4, 4, 4), dtype=np.complex64)
         W_th[:, :, 0, 0] = np.kron(np.eye(2), np.eye(2))
         W_th[:, :, 0, 1] = np.kron(Hl, np.eye(2))
-        W_th[:, :, 0, 2] = np.kron(np.eye(2), Hl)
-        W_th[:, :, 0, 3] = np.kron(h, np.eye(2)) + np.kron(np.eye(2), h)
+        W_th[:, :, 0, 2] = a * np.kron(np.eye(2), Hl)
+        W_th[:, :, 0, 3] = np.kron(h, np.eye(2)) + a * np.kron(np.eye(2), h)
         W_th[:, :, 1, 3] = np.kron(Hr, np.eye(2))
         W_th[:, :, 2, 3] = np.kron(np.eye(2), Hr)
         W_th[:, :, 3, 3] = np.kron(np.eye(2), np.eye(2))
@@ -241,6 +314,15 @@ def two_site_pauli(site_l, pauli_l='z', pauli_r='z'):
     r = np.array([1,])
     return mpo([(site_l, W_l), (site_l+1, W_r)], l, r)
 
+def pauli_at_sites(sites, pauli_type='z'):
+    """
+    Returns *list* of identical pauli mpos at each site specified
+    """
+    paulis = []
+    for site in sites:
+        paulis.append(single_site_pauli(site, pauli_type))
+    return paulis
+
 def extensive_twosite_local_term(H, site):
     """
     Construct a local (2site) energy term between (site, site+1)
@@ -279,32 +361,55 @@ def expect(state, operator):
     O is an MPO with left and right indices l and r.
     """
     assert sorted(state.sites) == sorted(operator.sites), "MPS and MPO sites do not match"
-
-    L = state.L.conj().T @ state.L
-    R = state.R @ state.R.conj().T
+    sites = sorted(state.sites)
 
     l = operator.l
-    r = operator.r 
-
-    L = ncon((L, l), ((-1,-2), (-3,)))
-    for i in sorted(state.sites):
+    L = ncon((np.eye(1), l), 
+             ((-1, -2), (-3,)))
+    r = operator.r
+    R = ncon((np.eye(1), r),
+             ((-1, -2), (-3,)))
+    
+    for i in sites:
         L = contract_left(L, state[i], operator[i])
-    Wexpect = ncon((L, R, r), ((1, 2, 3), (1, 2), (3,)))
+    Wexpect = ncon((L, R), ((1, 2, 3), (1, 2, 3)))
     return Wexpect
 
 def local_expect(state, operator):
-    working_state = copy.copy(state) # don't change original state
+
+    assert len(operator.sites) < len(state.sites), "Operator is not local; use expect"
+
+    state_copy = copy.copy(state) # don't change original state
     x_max = max(operator.sites)
-    working_state.centralize(x_max) # so we can contract with identities either side of operator
-    L = working_state.L.conj().T @ working_state.L # should be id
-    R = working_state.R @ working_state.R.conj().T # should be id
+    state_copy.centralize(x_max) # so we can contract with identities either side of operator
     l = operator.l
     r = operator.r 
-    L = ncon((L, l), ((-1,-2), (-3,)))
-    for i in sorted(operator.sites):
-        L = contract_left(L, working_state[i], operator[i])
-    Wexpect = ncon((L, R, r), ((1, 2, 3), (1, 2), (3,)))
-    return Wexpect
+
+    if min(state.sites) in operator.sites:
+        r_dim = state_copy[max(operator.sites)].shape[2]
+        R = ncon((np.eye(r_dim), r), ((-1, -2), (-3,)))
+        l = operator.l
+        L = ncon((np.eye(1), l), 
+             ((-1, -2), (-3,)))
+        for i in sorted(operator.sites):
+            L = contract_left(L, state_copy[i], operator[i])
+    elif max(state.sites) in operator.sites:
+        l_dim = state_copy[min(operator.sites)].shape[1]
+        L = ncon((np.eye(l_dim), l), ((-1, -2), (-3,)))
+        r = operator.r
+        R = ncon((np.eye(1), r),
+                ((-1, -2), (-3,)))
+        for i in sorted(operator.sites, reverse=True):
+            R = contract_right(R, state_copy[i], operator[i])
+    else:
+        l_dim = state_copy[min(operator.sites)].shape[1]
+        L = ncon((np.eye(l_dim), l), ((-1, -2), (-3,)))
+        r_dim = state_copy[max(operator.sites)].shape[2]
+        R = ncon((np.eye(r_dim), r), ((-1, -2), (-3,)))
+        for i in sorted(operator.sites):
+            L = contract_left(L, state_copy[i], operator[i])
+    expectation_value = ncon((L, R), ((1, 2, 3), (1, 2, 3)))
+    return expectation_value
 
 def pauli(i):
     """
@@ -327,14 +432,12 @@ def pauli(i):
         If the input string is not one of 'x', 'y', or 'z'.
 
     """
-    if i == 'x':
-        return np.array([[0, 1], [1, 0]])
-    elif i == 'y':
-        return np.array([[0, -1j], [1j, 0]])
-    elif i == 'z':
-        return np.array([[1, 0], [0, -1]])
-    else:
-        raise ValueError("Invalid input: must be one of 'x', 'y', or 'z'.")
+    pauli_matrices = {
+        'x': np.array([[0, 1], [1, 0]]),
+        'y': np.array([[0, -1j], [1j, 0]]), 
+        'z': np.array([[1, 0], [0, -1]])
+        }
+    return pauli_matrices[i]
 
 def first_order_deformation_generator(beta_profile, J=1, h=0.25, g=-0.525, t=1.0):
     """
@@ -397,3 +500,38 @@ def dhi_dt(state, site, J=1, g=-0.525):
     commutator = ising_commutator(site, J, g)
     thf_commutator = symmetric_thermofield(commutator)
     return -1j*local_expect(state, thf_commutator)
+
+def compose(*operators):
+    """
+    Compose multiple MPOs into a single MPO.
+    The resulting MPO is the product of the input MPOs in the order they are given.
+    """
+    if len(operators) == 0:
+        raise ValueError("At least one operator must be provided")
+    result = copy.deepcopy(operators[0])
+    for op in operators[1:]:
+        result.combine(op, after=True)
+    return result
+
+def apply_operator(state, operator, max_bond_dim=None):
+    """
+    ### Not finished 
+    
+    Apply an MPO to a state, and absorb the result into a new MPS.
+    Currently only works for extensive operators.
+    """
+
+    assert set(state.sites) == set(operator.sites), "MPS and MPO sites do not match"
+
+    sites = sorted(state.sites)
+
+    left_tensor = state[sites[0]]
+    left_op = operator[sites[0]]
+    new_left_tensor = ncon((left_tensor, left_op, op.l),
+                           ((1, -1, -3), (1)))
+
+    for site in sorted(state.sites[1:-1]):
+        current_tensor = state[site]
+        current_op = operator[site]
+        new_tensor = ncon((current_tensor, current_op),
+                          ((1, -1, -3), ))

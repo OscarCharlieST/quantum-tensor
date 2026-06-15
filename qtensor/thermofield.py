@@ -3,20 +3,25 @@ import matplotlib.pyplot as plt
 import copy
 import qtensor.states as states 
 import qtensor.operators as ops
-from qtensor.simulation.finiteTDVP import tdvp, right_mpo_contractions, inf_T_thermofield_variational
 import qtensor.simulation.finiteTDVP as sim
+import qtensor.simulation.updatemethod as methods
+from ncon import ncon
 
-def infinite_T_thermofield(N, D, noise=0):
+def inf_T_thermofield(N, D, noise=0):
     """
     Builds an infinite temperature thermofield with N sites and bond dimension D
     """
-    M = np.zeros((4, D, D))
+    M_L = np.zeros((4, 1, D))
+    M_L[:,0,0] = np.array([1, 0, 0, 1])
+    M_R = np.zeros((4, D, 1))
+    M_R[:,0,0] = np.array([1, 0, 0, 1])
+    M = np.zeros((4,D,D))
     M[:, 0, 0] = np.array([1, 0, 0, 1])
-    Ms = [M for _ in range(N)]
+    Ms = [M for _ in range(N-2)]
     if noise:
         Ms = [M + noise * np.random.rand(4, D, D) for M in Ms]
-    return states.mps(Ms)
-
+    tensor_list = [M_L] + Ms + [M_R]
+    return states.mps(tensor_list)
 
 def th_onesite(A, site):
     """
@@ -26,7 +31,20 @@ def th_onesite(A, site):
     W[:, :, 0, 0] = np.kron(A, np.eye(2)) + np.kron(np.eye(2), A)
     return ops.mpo([site, W], np.array([1,]), np.array([1,]))
 
-def thermofield_hamiltonian(H):
+def tf_twosite(A, B, site_l):
+    """
+    Taskes two 2x2 matrices and returns AB_a + AB_b on each copy of Hilbert space
+    """
+    Wl = np.zeros((4, 4, 1, 2))
+    Wr = np.zeros((4, 4, 2, 1))
+    Wl[:, :, 0, 0] = np.kron(A, np.eye(2))
+    Wl[:, :, 0, 1] = np.kron(np.eye(2), A)
+    Wr[:, :, 0, 0] = np.kron(B, np.eye(2))
+    Wr[:, :, 1, 0] = np.kron(np.eye(2), B)
+    return ops.mpo([(site_l, Wl), (site_l+1, Wr)], np.array([1, ]), np.array([1,]))
+
+
+def thermofield_hamiltonian(H, asym=False):
     """
     Takes a specific form of2 site hamiltonian H
     where Hl, Hr are the left and right of the two site term
@@ -47,6 +65,10 @@ def thermofield_hamiltonian(H):
 
     Note that it only works where the two local terms can be written as tensor product over the two sites. 
     """
+    a=1
+    if asym:
+        a=-1
+
     H_th = []
     for i in H.sites:
         W = H[i]
@@ -57,8 +79,8 @@ def thermofield_hamiltonian(H):
         W_th = np.zeros((4, 4, 4, 4), dtype=np.complex64)
         W_th[:, :, 0, 0] = np.kron(np.eye(2), np.eye(2))
         W_th[:, :, 0, 1] = np.kron(Hl, np.eye(2))
-        W_th[:, :, 0, 2] = np.kron(np.eye(2), Hl)
-        W_th[:, :, 0, 3] = np.kron(h, np.eye(2)) + np.kron(np.eye(2), h)
+        W_th[:, :, 0, 2] = a * np.kron(np.eye(2), Hl)
+        W_th[:, :, 0, 3] = np.kron(h, np.eye(2)) + a * np.kron(np.eye(2), h)
         W_th[:, :, 1, 3] = np.kron(Hr, np.eye(2))
         W_th[:, :, 2, 3] = np.kron(np.eye(2), Hr)
         W_th[:, :, 3, 3] = np.kron(np.eye(2), np.eye(2))
@@ -67,16 +89,19 @@ def thermofield_hamiltonian(H):
     r = np.array([0, 0, 0, 1])
     return ops.mpo(H_th, l, r)
 
-def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True, method=None):
+def finite_T_thermofield(beta,  H, steps=100, 
+                         initial_state=None, N=2, D=4,
+                         plot=True, method=None):
     if not initial_state:    
-        state = inf_T_thermofield_variational(N, D)
+        state = inf_T_thermofield(N, D)
     else:
         state = copy.deepcopy(initial_state)
         # initial state must be infinite temperature
         pass
     if not method:
-        method = sim.method_fast
-    _, expectations = tdvp(state, H, -1j*beta*1/4, steps, method, history=True, operators=[H])
+        method = methods.lanczos_method(max_iters=8)
+    _, expectations = sim.tdvp(state, H, -1j*beta*1/4, steps, method, 
+                                   history=True, extensive_operators=[H])
     time = np.abs(list(expectations.keys()))*4
     energy = np.real([opexp[0] for opexp in expectations.values()])/2
     if plot:
@@ -87,16 +112,60 @@ def finite_T_thermofield(beta, N, D, H, steps=100, initial_state=None, plot=True
         print("Energy at finite temperature:", energy[-1])
     return state, time, energy
 
-def near_thermal(H, profile, D, steps=100, initial_state=None):
+def near_thermal(H, profile, initial_state, steps=100):
+    """
+    Perform imaginary time evolution with a spatially varying temperature profile.
+    
+    :param H: Symmetric thermofield hamiltonian
+    :param profile: inverse temperature profile 
+    :param D: max bond dimension
+    :param steps: Description
+    :param initial_state: Description
+    """
+
     assert len(H.sites) == len(profile), "temp profile incorrect length"
+    
+    b_profile_r = (profile + np.roll(profile, -1)) / 2 # Bond to the left of site avg temp
+    
     H_new = []
-    for site, beta in zip(H.sites, profile):
+    for site, beta, br in zip(H.sites, profile, b_profile_r):
         W = copy.copy(H[site]) # don't actually edit the hamiltonian
-        W[:, :, :-1, 1:] = W[:, :, :-1, 1:] * np.sqrt(beta) # twosite terms get a factor from each site
-        W[:, :, 0, -1] = W[:, :, 0, -1] * np.sqrt(beta) # onesite term gets both sqrts at once
+        W[:, :, :-1, 1:-1] = W[:, :, :-1, 1:-1] * br # twosite terms get average temperature across the bond
+        W[:, :, 1:-1, 1:] = W[:, :, 1:-1, 1:]
+        W[:, :, 0, -1] = W[:, :, 0, -1] * beta # onesite term get local temperature
         H_new.append((site, W))
+
     H_eff = ops.mpo(H_new, H.l, H.r)
-    state, _, _ = finite_T_thermofield(1, len(profile), D, H_eff, steps=steps, initial_state=initial_state,
+    state, _, _ = finite_T_thermofield(1, H_eff, initial_state=initial_state,
+                                       steps=steps, plot=False)
+    return state
+
+def near_thermal_delta_function(H, bond, delta_beta, initial_state, steps=10):
+    """
+    Perform imaginary time evolution with a delta function temperature profile, i.e. a local quench in temperature
+    :param H: Symmetric thermofield hamiltonian
+    :param site: Bond between (site, site+1) to apply generator to
+    :param delta_beta: change in inverse temperature at the bond.
+    :param initial_state: state to apply generator to - should be thermal at some temperature
+    """
+
+    root_beta = np.sqrt(delta_beta + 0j) # make complex to avoid issues with negative delta beta
+
+    H_new = []
+    for site in H.sites:
+        if not site==bond and not site==bond+1:
+            W = copy.copy(H[site]) # don't actually edit the hamiltonian
+            W[:, :, :-1, 1:] = W[:, :, :-1, 1:] * 0 # Set everything to zero
+            H_new.append((site, W))
+        else:
+            W = copy.copy(H[site])
+            W[:, :, :-1, 1:] = W[:, :, :-1, 1:] * root_beta 
+            W[:, :, 0, -1] = W[:, :, 0, -1] * root_beta
+            H_new.append((site, W))
+
+    H_eff = ops.mpo(H_new, H.l, H.r)
+    state, _, _ = finite_T_thermofield(1, H_eff, steps=steps,
+                                       initial_state=initial_state,
                                        plot=False)
     return state
 
@@ -113,3 +182,45 @@ def near_thermal_first_order_deformed(D, beta_profile, J=1, h=0.25, g=-0.525, t=
     tf_fodg = thermofield_hamiltonian(fodh)
     state, _, _ = finite_T_thermofield(1, len(beta_profile), D, tf_fodg, steps, plot=False, method=sim.method_exact)
     return state
+
+def single_copy_expectation(psi, O):
+    """
+    Given an operator O on the un-doubled hilbert space and a thermofield state psi,
+    calculate the expectation of O as the expectation of (O x I).
+
+    This way of taking the expectation is no symmetric;
+    disentanglers can be applied to the auxilliary space. 
+
+    Parameters:     
+        psi: Thermofield MPS - doesn't have to be symmetric but does need to be on doubled
+          hilbert space
+        O: Local mpo on the single hilbert space      
+
+    Returns:
+        << O >>
+    """
+    psi = copy.deepcopy(psi)
+    op_sites = O.sites
+    min_site = min(op_sites)
+    psi.centralize(min_site)
+
+    l, r = O.l, O.r
+    d2, Dl, Dr = psi[min_site].shape
+    d = int(np.sqrt(d2))
+
+    L_con = ncon((np.eye(Dl), l),
+                 ((-1, -2), (-3,)))
+    
+    for site in op_sites:
+        A = psi[site]
+        _, Dl, Dr = A.shape
+        M = psi[site].reshape(d, d, Dl, Dr)
+        W = O[site]
+        L_con = ncon((L_con, M, M.conj(), W),
+                     ((1, 2, 3), (4, 6, 1, -1), (5, 6, 2, -2), (4, 5, 3, -3)))
+    return ncon((L_con, r),
+                ((1, 1, 2), (2, )))
+
+
+
+
