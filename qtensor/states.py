@@ -82,22 +82,34 @@ class mps:
         return self.tensors[max(self.sites)]
     
     def left_orthogonal(self, max_bond_dim=np.inf):
-        PsiL = left_orthogonal_state(self.tensors, max_bond_dim)
+        """
+        Left orthogonalize (and re-normalize) the state in place.
+        Returns the norm of the state prior to normalization - useful after
+        applying a non-unitary operator (see apply()), where that norm would
+        otherwise be silently lost.
+        """
+        PsiL, norm = left_orthogonal_state(self.tensors, max_bond_dim)
         self.tensors = PsiL
         self.normalized = True
         self.form = 'left'
         self.centred = False
         self.bond_centred = False
         self.c_site = self.sites[-1]
-    
+        return norm
+
     def right_orthogonal(self, max_bond_dim=np.inf):
-        PsiR = right_orthogonal_state(self.tensors, max_bond_dim)
+        """
+        Right orthogonalize (and re-normalize) the state in place.
+        Returns the norm of the state prior to normalization (see left_orthogonal).
+        """
+        PsiR, norm = right_orthogonal_state(self.tensors, max_bond_dim)
         self.tensors = PsiR
         self.normalized = True
         self.form = 'right'
         self.centred = False
         self.bond_centred = False
         self.c_site = self.sites[0]
+        return norm
 
     def centralize(self, c_site, max_bond_dim=np.inf):
         """
@@ -129,6 +141,9 @@ class mps:
     def apply(self, operator, max_bond_dim=np.inf):
         """
         Apply an MPO operator to the MPS state, and recompress to max_bond_dim if nessecary.
+        Mutates self in place. Applying an operator is not generally norm-preserving
+        (e.g. a Hamiltonian MPO), so the true norm of operator|self> - which would
+        otherwise be discarded by the final re-normalization - is returned.
         """
         for site in operator.sites:
             M = self.tensors[site]
@@ -148,7 +163,7 @@ class mps:
             else:
                 M_new = M_new.reshape(d, Dl*w_Dl, Dr*w_Dr)
             self.tensors[site] = M_new
-        self.left_orthogonal(max_bond_dim)
+        return self.left_orthogonal(max_bond_dim)
     
 def left_orthogonal_tensor(M, max_bond_dim=np.inf):
     """
@@ -184,6 +199,7 @@ def left_orthogonal_state(statedict, max_bond_dim):
 
     RETURNS:
     PsiL: dict of {site:mps tensor} pairs, left orthogonalized
+    norm: norm of the input state prior to the final normalization
     """
     sites = sorted(statedict.keys())
     PsiL = {}
@@ -202,7 +218,7 @@ def left_orthogonal_state(statedict, max_bond_dim):
     norm = la.norm(M_eff)
     M_eff = M_eff / norm # normalize
     PsiL[sites[-1]] = M_eff
-    return PsiL
+    return PsiL, norm
 
 def right_orthogonal_tensor(M, max_bond_dim=np.inf):
     """
@@ -233,7 +249,8 @@ def right_orthogonal_state(statedict, max_bond_dim):
     max_bond_dim: int, max bond dimension to truncate to if nessecary
 
     RETURNS:
-    PsiL: dict of {site:mps tensor} pairs, right orthogonalized
+    PsiR: dict of {site:mps tensor} pairs, right orthogonalized
+    norm: norm of the input state prior to the final normalization
     """
     sites = sorted(statedict.keys(), reverse=True) # Sort from largest site index to smallest
     PsiR = {}
@@ -251,14 +268,16 @@ def right_orthogonal_state(statedict, max_bond_dim):
     norm = la.norm(M_eff)
     M_eff = M_eff / norm
     PsiR[sites[-1]] = M_eff
-    return PsiR
+    return PsiR, norm
 
 def centralize_state(statedict, c_site, max_bond_dim):
-    # If centre at edge of chain, just orthogonalise 
+    # If centre at edge of chain, just orthogonalise
     if c_site == max(statedict.keys()):
-        return left_orthogonal_state(statedict, max_bond_dim)
+        psi_centre, _ = left_orthogonal_state(statedict, max_bond_dim)
+        return psi_centre
     if c_site == min(statedict.keys()):
-        return right_orthogonal_state(statedict, max_bond_dim)
+        psi_centre, _ = right_orthogonal_state(statedict, max_bond_dim)
+        return psi_centre
 
     psi_centre = {}
     # Handle left side of chain
@@ -440,7 +459,7 @@ def entropy(state, site=0):
     centre_tensor = psi_centre[site+1]
     R = ncon((centre_tensor, centre_tensor.conj()), ((1, -1, 2), (1, -2, 2) ))
     P = np.real(ncon((R, R), ((1, 2), (2, 1))))
-    entropy = -np.log(P)
+    entropy = -np.log2(P)
     return entropy
 
 def vn_entropy(state, site=0):
@@ -454,12 +473,12 @@ def vn_entropy(state, site=0):
     R = ncon((centre_tensor, centre_tensor.conj()), ((1, -1, 2), (1, -2, 2) ))
     # Diagonalise to get schmidt values
     evals, _ = la.eig(R)
-    entropy = -np.sum(evals * np.log(evals))
+    entropy = -np.sum(evals * np.log2(evals))
     return entropy
 
 def entropy_diagonal(state, site=None):
     sites = sorted(state.sites)
-    if not site:
+    if site is None:
         site = max(sites)//2 + 1
     else:
         assert site in sites, "Site not in state."
@@ -477,7 +496,7 @@ def entropy_diagonal(state, site=None):
 
 def right_environments(state):
     sites = sorted(state.sites)
-    psi_left = left_orthogonal_state(state.tensors, max_bond_dim=np.inf)
+    psi_left, _ = left_orthogonal_state(state.tensors, max_bond_dim=np.inf)
     R = {}
     R_site = np.eye(1)
     for site in sorted(sites, reverse=True):
@@ -493,7 +512,7 @@ def purities(state):
 
 def entropies(state):
     P = purities(state)
-    entropies = {i: np.log2(P[i]) for i in P}
+    entropies = {i: -np.log2(P[i]) for i in P}
     return entropies
 
 # def entropy_left(state, site=0):

@@ -49,7 +49,7 @@ def tdvp(state, operator, t_f, steps,
     R_con = right_mpo_contractions(state, operator)
     L_con = {min(sites)-1 : ncon((np.eye(1), operator.l), ((-1, -2), (-3,)))}
 
-    b = progressbar.ProgressBar(maxval=steps+1)
+    b = progressbar.ProgressBar(maxval=steps+1, line_breaks=False)
     b.start()
     step=0
 

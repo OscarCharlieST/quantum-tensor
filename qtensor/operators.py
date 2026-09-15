@@ -512,26 +512,3 @@ def compose(*operators):
     for op in operators[1:]:
         result.combine(op, after=True)
     return result
-
-def apply_operator(state, operator, max_bond_dim=None):
-    """
-    ### Not finished 
-    
-    Apply an MPO to a state, and absorb the result into a new MPS.
-    Currently only works for extensive operators.
-    """
-
-    assert set(state.sites) == set(operator.sites), "MPS and MPO sites do not match"
-
-    sites = sorted(state.sites)
-
-    left_tensor = state[sites[0]]
-    left_op = operator[sites[0]]
-    new_left_tensor = ncon((left_tensor, left_op, op.l),
-                           ((1, -1, -3), (1)))
-
-    for site in sorted(state.sites[1:-1]):
-        current_tensor = state[site]
-        current_op = operator[site]
-        new_tensor = ncon((current_tensor, current_op),
-                          ((1, -1, -3), ))

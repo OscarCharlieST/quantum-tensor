@@ -118,8 +118,8 @@ def plot_entropy_evolution(state_history,
         times = times[::block_len]
     if t_f:
         times = times[times <= t_f]
-    if not site:
-        site = max(state_history[times[0]].sites)//2    
+    if site is None:
+        site = max(state_history[times[0]].sites)//2
     if entropy == 'Renyi2':
         entropies = [states.entropy(state_history[t], site) for t in times]
     elif entropy == 'VonNeumann':
@@ -129,7 +129,7 @@ def plot_entropy_evolution(state_history,
     ax.set_ylabel(r'$S_2$')
     ax.set_xlabel('Time')
     if show_max:
-        max_ent = np.log(np.max(state_history[max(times)][site].shape))
+        max_ent = np.log2(np.max(state_history[max(times)][site].shape))
         ax.axhline(max_ent, color='red', linestyle='--', label='Max Entropy')
     # if show_est:
     #     # Entropy of random state from 
