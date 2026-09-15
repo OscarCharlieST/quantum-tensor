@@ -119,6 +119,27 @@ matching numbered-leg lists everywhere else — there's no type system enforcing
 7. `qtensor/simulation/tangentTDVP.py` currently exists but is **empty** — a stub for a planned
    tangent-space TDVP variant that hasn't been written yet.
 
+## Research subprojects (`lyapunov/`)
+
+`lyapunov/` is a *consumer* of `qtensor`, not part of it — self-contained research code that imports
+`qtensor.*` the same way the notebooks do (run from repo root). Don't move its helpers into `qtensor`
+without being asked. `lyapunov/WORKFLOW.md` is the practical record (pipeline, results, open items);
+the per-folder READMEs carry the physics arguments.
+
+Two subprojects, split because the original question had two different answers:
+- `lyapunov/relaxation/` (active) — projects the antisymmetric thermofield Hamiltonian onto the MPS
+  tangent space at the uniform-temperature thermofield double and diagonalizes it exactly, to get
+  dephasing relaxation rates of local observables. `tangent_hamiltonian.py` builds the tangent basis
+  (null-space tensors `V_L^n`) and the projected Hamiltonian, reusing `updatemethod.apply_Heff_parts`
+  and `operators.contract_left/right` for every matrix element; `response.py` turns the spectrum into
+  a response function and a relaxation time; `run_relaxation_scan.py` drives an L scan (~70 s).
+- `lyapunov/tdvp_lyapunov/` (not started) — genuine Lyapunov exponents of the nonlinear TDVP flow.
+
+Key result worth not re-deriving: `H_asym` is exactly Hermitian and annihilates the thermofield double
+exactly, so the tangent-space projection has a real spectrum and **all Lyapunov exponents at that fixed
+point are exactly zero**. Nonzero exponents require linearizing along a trajectory where `Hψ ≠ 0`, where
+the tangent-projector-derivative term survives — which is why the project split.
+
 ## TODOs
 
 - MPO tensors are frequently allocated as `np.complex64` (e.g. in `tilted_ising`, `symmetric_thermofield`)
@@ -131,3 +152,27 @@ matching numbered-leg lists everywhere else — there's no type system enforcing
 - `states.centralize_state`/`mps.centralize()` still silently discard the state's norm when normalizing
   the new centre tensor (the same issue `left_orthogonal_state`/`right_orthogonal_state`/`mps.apply()` had
   until it was fixed to return that norm) — not yet fixed, since `centralize` isn't on the `apply()` path.
+- `lyapunov/relaxation/tangent_hamiltonian.py`'s `build_null_space_tensor` (the isometry-completion/null-space
+  helper for a single MPS tensor) is a generically useful primitive that arguably belongs in `states.py`
+  alongside `left_orthogonal_tensor`/`right_orthogonal_tensor`, not scoped to the Lyapunov project — left
+  where it is for now to keep that subproject self-contained; revisit if another use for it turns up.
+- **Canonicalization gauge is not reproducible across independent sweeps.** Wherever the Schmidt spectrum
+  has near-degenerate or near-zero values (thermofield states routinely have them at 1e-11), the SVD's
+  singular vectors are numerically arbitrary, so re-canonicalizing a state a second time lands in a
+  *different* gauge. Anything that combines tensors from two separate canonicalization passes — centre
+  tensors, environments, overlaps — must derive them from one shared pass (e.g. via bond matrices), not
+  recompute them. This produces plausible-looking but meaningless numbers when violated; see
+  `lyapunov/WORKFLOW.md` for the instance that caught it.
+- **Single-site TDVP cannot grow bond dimension** (it's a fixed-rank manifold method), and
+  `thermofield.inf_T_thermofield` returns a rank-1 state zero-padded to bond dimension D. So
+  imaginary-time evolution from it stays rank 1 unless seeded — that's what the `noise` argument is for,
+  and it means the resulting finite-temperature state is only approximately the thermofield double.
+  Note also that `tdvp` never truncates (no `max_bond_dim` is threaded through it), so bond dimension is
+  fixed by whatever the initial state carries.
+- `thermofield.th_onesite` passes `[site, W]` to `ops.mpo`, where every other caller passes a list of
+  `(site, tensor)` pairs — it would raise on the `W[0]`/`W[1]` unpacking in `mpo.__init__`. Looks like a
+  latent bug in a function nothing currently calls.
+- Several `active.ipynb` cells call `thermofield.near_thermal(H, profile, D, steps=..., initial_state=...)`,
+  which doesn't match the current signature `near_thermal(H, profile, initial_state, steps=100)` and would
+  raise a duplicate-argument `TypeError`. The notebook cells are stale against a since-changed API — don't
+  treat them as a guide to current usage (they are still a good guide to the *parameter regimes* used).
