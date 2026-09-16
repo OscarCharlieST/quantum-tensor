@@ -10,9 +10,12 @@ have two genuinely different answers (see "Why this splits in two" below).
   observables, from the spectrum of H_asym projected onto the MPS tangent
   space at the fixed point. Hermitian, exactly diagonalizable, code
   started.
-- [`tdvp_lyapunov/`](tdvp_lyapunov/) — **not started.** Genuine Lyapunov
-  exponents of the nonlinear TDVP flow on the MPS manifold, which requires
-  linearizing along a trajectory rather than at the fixed point.
+- [`tdvp_lyapunov/`](tdvp_lyapunov/) — **active; first scan done.**
+  Genuine Lyapunov exponents of the nonlinear TDVP flow on the MPS
+  manifold, linearized along a trajectory under the *symmetric*
+  thermofield Hamiltonian (where `Hψ ≠ 0`), with covariant Lyapunov
+  vectors, aimed at hydrodynamic Lyapunov modes. At β = 1: extensive
+  spectrum, route- and dt-independent; no hydrodynamic-mode signature yet.
 
 (The folder is still named `lyapunov` for continuity with where the idea
 started; only the second subproject really computes Lyapunov exponents.

@@ -282,6 +282,32 @@ environments) and come out exact conjugate transposes.
 `||P H_asym psi*||` as a fixed-point diagnostic, which is free: it is
 `observable_tangent_vector` with O = H_asym.
 
+`plots.py` — eyeball diagnostics, pure consumers of a `run_one` result:
+
+- `plot_spectral_weights(omega, weights, ...)` — A_O(ω) against the DOS
+  (both unit area, one axis), per-mode weights on a log scale, cumulative
+  weight. Optionally overlays the Lorentzian of HWHM 1/τ implied by a fitted
+  τ, which is the direct test of whether that τ is a lineshape width.
+- `plot_response(times, response, ...)` — C(t) over the full trace with the
+  fit window and `t_zeno`/`t_heis` marked; then, zoomed to the decay,
+  log|C| and the running τ(t) = −1/(d ln C/dt). A real exponential regime
+  is a plateau in τ(t). The zoom is needed because `run_one` integrates to
+  3·t_heis, hundreds of decay times.
+- `spectral_weights_from_result` / `response_from_result` / `plot_result`
+  unpack a result dict directly.
+
+It also runs from the terminal (repo root, Anaconda base env):
+
+    python lyapunov/relaxation/plots.py --L 8 --D 8 --obs energy_mid --seed 0
+
+`--obs` takes `z_mid`, `x_mid`, `energy_mid` (the Hamiltonian term on the
+centre bond) or `all`. `--pickle scan_results.pkl` plots a saved scan
+instead of re-running, and `--show` opens the figures. PNGs go to
+`figures/L{L}_D{D}_{obs}_{spectrum,response}.png`. **Pass `--seed`:** the
+rank-seeding noise in `inf_T_thermofield` comes from the global numpy RNG,
+so unseeded runs differ visibly (τ_fit for `z_mid` at L=8 ranged 8.7–12.7
+across three runs).
+
 Not yet written: the wavevector-resolved energy density needed to turn
 `Γ_q` vs `q²` into a diffusion constant.
 
@@ -296,3 +322,16 @@ Not yet written: the wavevector-resolved energy density needed to turn
    `finiteTDVP.tdvp` run with a small non-uniform perturbation.
 3. **Auxiliary-gauge modes** (caveat above) — needs resolution before the
    spectrum can be read physically.
+4. **Nothing relaxes yet at L=8, D=8** (from the `plots.py` figures, seed 0),
+   and the fitted τ values shouldn't be read as rates. `z_mid`: C(t) levels
+   off at ~0.2–0.25 and stays there past t_heis, so τ_fit ≈ 9 describes the
+   approach to a plateau. `energy_mid`: C(t) crosses zero at t ≈ 2.3 and
+   then oscillates between 0 and ~0.3 indefinitely. τ_fit = 0.36
+   (R² = 0.96) disagrees with τ_1/e = 1.18 because the fit window closes
+   before the first zero and fits the Zeno shoulder. Its weight sits in
+   ω ∈ [−2, 2], comb-like, n_eff = 53 of 959 modes. That is much narrower
+   than both the DOS and the implied Lorentzian (HWHM 2.75), which points
+   to the discrete-spectrum obstruction above rather than a slow rate. The
+   running τ(t) never plateaus for either observable. Whether larger D
+   densifies the weighted spectrum enough (the feasibility estimate says D,
+   not N, is the lever) is the next thing to check.

@@ -168,6 +168,10 @@ def lanczos_loop(basis, W, L, R):
     HC = apply_Heff_parts(C_last, W, L, R)
     H_cons = [contract_C(C_k, HC) for C_k in basis]
     C_next = HC - sum([H_cons[i]*basis[i] for i in range(len(basis))])
+    # Second Gram-Schmidt pass. With one pass the orthogonality loss
+    # compounds geometrically along the iteration and the basis is garbage
+    # by the time the Krylov space nears the full local dimension.
+    C_next = C_next - sum([contract_C(C_k, C_next)*C_k for C_k in basis])
     norm = np.sqrt(contract_C(C_next, C_next))
     return C_next/norm, norm, H_cons
 
@@ -195,6 +199,9 @@ def lanczos_parts(C, W, L, R,
     C_normed = C / la.norm(C)
     basis = [C_normed]
     H_cons = []
+    # A basis of C.size vectors already spans the whole local space; going
+    # further only normalizes roundoff.
+    max_iters = min(max_iters, C.size)
     for i in range(max_iters):
         # print('iter ', i)
         C_next, norm, H_cons_i = lanczos_loop(basis, W, L, R)
@@ -249,8 +256,9 @@ def lanczos_loop_bond(basis, L, R):
     M_last = basis[-1]
     HM = apply_Heff_bond(M_last, L, R)
     H_cons = [contract_M(M_k, HM) for M_k in basis]
-    # Orthogonalize against existing basis
+    # Orthogonalize against existing basis, twice (see lanczos_loop)
     M_next = HM - sum(H_cons[i] * basis[i] for i in range(len(basis)))
+    M_next = M_next - sum(contract_M(M_k, M_next) * M_k for M_k in basis)
     norm = np.sqrt(contract_M(M_next, M_next))
     return M_next / norm, norm, H_cons
 
@@ -278,6 +286,7 @@ def lanczos_parts_bond(M, L, R, epsilon=1e-6, max_iters=100):
     basis = [M / M_norm]
     H_cols = []
     norm = None
+    max_iters = min(max_iters, M.size)   # see lanczos_parts
 
     for i in range(max_iters):
         M_next, norm, H_col = lanczos_loop_bond(basis, L, R)

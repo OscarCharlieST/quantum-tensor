@@ -1,0 +1,16 @@
+2026-09-16 18:42:57  waiting for L12_D4 (Route B, started under the first queue)
+2026-09-16 18:54:39  L12_D4 finished; plotting
+2026-09-16 18:54:50  L12_D4 plots done
+2026-09-16 18:54:50  START L8_D8_beta1
+2026-09-16 19:44:17  END   L8_D8_beta1 (exit 0); plotting
+2026-09-16 19:44:48  PLOTS L8_D8_beta1
+2026-09-16 19:44:48  START L8_D4_beta1_dt025
+2026-09-16 20:17:18  END   L8_D4_beta1_dt025 (exit 0); plotting
+2026-09-16 20:17:25  PLOTS L8_D4_beta1_dt025
+2026-09-16 20:17:25  START L16_D4_beta1
+2026-09-16 21:32:16  END   L16_D4_beta1 (exit 0); plotting
+2026-09-16 21:32:35  PLOTS L16_D4_beta1
+2026-09-16 21:32:35  START L8_D12_beta1
+2026-09-16 23:36:33  END   L8_D12_beta1 (exit 0); plotting
+2026-09-16 23:39:49  PLOTS L8_D12_beta1
+2026-09-16 23:39:49  QUEUE2 DONE

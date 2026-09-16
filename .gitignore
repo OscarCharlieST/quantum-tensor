@@ -1,1 +1,3 @@
 __pycache__/
+# Lyapunov run files: hundreds of MB to GB each
+lyapunov/tdvp_lyapunov/runs/*.h5

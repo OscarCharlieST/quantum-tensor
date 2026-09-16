@@ -27,6 +27,9 @@ no built-in truncation, no graph/network abstraction. `quimb` and `tenpy` appear
 `quimbtest.ipynb` / `tenpy_test.ipynb` as external references/comparisons — they are not used by
 `qtensor` itself and shouldn't be treated as dependencies of the package.
 
+`lyapunov/tdvp_lyapunov` additionally uses `joblib` (parallel Route A). Only the Anaconda base env
+(`C:\Users\charl\anaconda3\python.exe`) has the dependencies; bare `python` in the shell is the Store stub.
+
 Other runtime dependencies actually imported by `qtensor`: `h5py` (state checkpointing), `progressbar`
 (sweep progress bar in `tdvp`), `matplotlib` (`qtensor/visualise.py`, `qtensor/thermofield.py`), and
 `numba` (`jit`/`njit`/`numba.typed.List` are imported in `finiteTDVP.py` and `updatemethod.py` but not
@@ -133,12 +136,31 @@ Two subprojects, split because the original question had two different answers:
   (null-space tensors `V_L^n`) and the projected Hamiltonian, reusing `updatemethod.apply_Heff_parts`
   and `operators.contract_left/right` for every matrix element; `response.py` turns the spectrum into
   a response function and a relaxation time; `run_relaxation_scan.py` drives an L scan (~70 s).
-- `lyapunov/tdvp_lyapunov/` (not started) — genuine Lyapunov exponents of the nonlinear TDVP flow.
+- `lyapunov/tdvp_lyapunov/` (active) — full Lyapunov spectrum (non-negative half; the rest follows by
+  `±λ` pairing) of single-site TDVP under the *symmetric* thermofield Hamiltonian, by Benettin QR with
+  a Ginelli backward pass for covariant vectors, hunting hydrodynamic Lyapunov modes. Tangent vectors
+  are real coordinates in the orthonormal `V_L` frame of a *single* canonicalization pass per point
+  (`frame.py`); only Hilbert-space overlaps ever cross between points, which is what makes the gauge
+  drift harmless. Two routes to the one-step tangent map, cross-validated: Route A (`stepper.py`)
+  finite-differences the unmodified TDVP step, parallel over columns with joblib (`--n-jobs 16`);
+  Route B (`tangent_generator.py`) is the exact generator `−i(H_tan X + conj(K X))`, where `K` is the
+  second fundamental form contracted with `(1−P)Hψ`, with polar-factor transport between frames. B is
+  faster for n ≲ 700, A above. Driver `run_lyapunov.py`; big h5 files go to
+  `C:\Users\charl\lyapunov_runs` (outside OneDrive). The subproject README has results and next steps.
 
 Key result worth not re-deriving: `H_asym` is exactly Hermitian and annihilates the thermofield double
 exactly, so the tangent-space projection has a real spectrum and **all Lyapunov exponents at that fixed
 point are exactly zero**. Nonzero exponents require linearizing along a trajectory where `Hψ ≠ 0`, where
 the tangent-projector-derivative term survives — which is why the project split.
+
+## Lanczos fix (2026-09-16)
+
+`updatemethod.lanczos_loop`/`lanczos_loop_bond` used single-pass Gram–Schmidt, which lost orthogonality
+geometrically and produced a garbage vector once the Krylov space was exhausted — i.e. whenever a local
+space had dimension ≤ `max_iters` (every bond tensor, and edge centres, at D = 4 with the default 16).
+Local updates were off by ~1e-1. Now fixed with a second orthogonalization pass and
+`max_iters = min(max_iters, dim)`; local updates match `expm` to 1e-16. **Results from Lanczos TDVP at
+D ≤ 4 produced before this fix are suspect**, including in the notebooks.
 
 ## TODOs
 
