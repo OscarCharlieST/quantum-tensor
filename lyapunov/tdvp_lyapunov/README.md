@@ -902,32 +902,27 @@ not for reading any one vector.
 
 ## Next
 
-1. ~~**Diffusive scaling of the split**~~ — done, negatively: see
-   "Per-vector dispersion". lambda is linear in q with a zero crossing at
-   q0 ~ 1.4, and no q² branch. What is left is to understand *why* linear:
-   the natural next probe is the time-resolved weighted decay
+1. **Why linear?** The dispersion `lambda ~ A(q - q0)` is the open
+   question. The mean exponent used so far is dominated by the bulk of the
+   spectrum; the sharper probe is the time-resolved weighted decay
    `C(t) = sum_i w_i(q) exp(lambda_i t)`, whose long-time behaviour is set
-   by the slowest weighted modes rather than by the mean used so far.
-2. **(superseded framing)** the old plan: The
-   temperature/time-shift asymmetry is now a q-resolved number: define a
-   rate from it — e.g. the band-weighted `λ` of the temperature template,
-   `Σ_i w_i(q) λ_i`, which is a genuine decay rate of that perturbation —
-   and test whether it scales as `q²`. This uses the stored runs; no new
-   simulation is needed for L = 16, D = 4.
-2. **The same at other L and D**, to see whether the rate's `q²`
-   coefficient behaves like a diffusion constant. The other five runs are
-   k = n, so they measure the split only through the top-band depletion;
-   a second k = 2n run (L = 8, D = 8, ~1 h) would give a clean D
-   comparison.
-3. **Auxiliary copy**: rerun the template analysis with `--copy aux`. The
+   by the slowest weighted modes. That is also the estimator a diffusive
+   rate would actually live in, so it is worth building before concluding
+   there is no diffusion anywhere in this system.
+2. **What sets q0 = 1.4?** It is the same (to ~0.1) at L = 8 and 16 and at
+   beta = 1 and 0.01, so it is not a finite-size or temperature scale. A
+   D scan would say whether it is set by the bond dimension -- i.e. by how
+   much correlation the manifold can hold -- which is the interesting
+   possibility for the compression picture.
+3. **Auxiliary copy**: rerun the profile analyses with `--copy aux`. The
    physical and auxiliary energies are separately conserved by the exact
    dynamics but not by the manifold flow, so comparing them isolates what
    the purification is doing.
-4. **Longer D = 12 run**, before reading the D dependence of the spectrum
-   (finding 4) or λ_0.
-5. **β scan** — done for L = 8, D = 8 (see "Temperature scan"). What is
-   left is whether the high-temperature loss of q-selectivity survives at
-   L = 16, which needs one more full-spectrum run (~1.5 h).
+4. **L = 16, D = 6, beta = 0.01, k = 2n** (requested, not started): ~4 h,
+   ~10 GB. Would test the high-temperature loss of q-selectivity and the
+   D-dependence of q0 at the best available wavevector resolution.
+5. **Longer D = 12 run**, before reading the D dependence of the spectrum
+   (finding 4) or lambda_0.
 6. Rung 4 (D = 1 mean field) — still undone, low priority now that the
    generator is validated three other ways.
 
