@@ -54,6 +54,50 @@ def single_copy_energy_density(site_l, J=1, h=0.25, g=-0.525):
     return ops.mpo([(site_l, Wl), (site_l + 1, Wr)],
                    np.array([1.0]), np.array([1.0]))
 
+def single_copy_current(site, J=1, h=0.25, g=-0.525):
+    """
+    MPO for the tilted-Ising energy current through `site`, on the physical
+    copy only:  J g (y_i z_{i+1} - z_{i-1} y_i),  a three-site operator on
+    (site-1, site, site+1).
+
+    This is the current that satisfies continuity with the density above,
+
+        d<h_l>/dt = <j_l> - <j_{l+1}>,
+
+    where `h_l` is single_copy_energy_density on the bond between sites l
+    and l+1, and `j` is indexed by *site* -- energy enters bond l through
+    site l and leaves through site l+1.
+
+    The symmetrization of the density is what fixes the form. For the
+    unsymmetrized convention h_l = J z_l z_{l+1} + 2 a_l, which is the one
+    `operators.ising_commutator` assumes, the current is instead
+    -2 J g z_{l-1} y_l; the two densities differ by a lattice derivative
+    and their currents are *not* interchangeable (pairing one with the
+    other breaks continuity at O(1)).
+
+    Only g drives energy transport: the longitudinal field h commutes with
+    the z z coupling and drops out. It is accepted here so that this can be
+    called with the same parameters as the density, but does not enter.
+    """
+    Y = np.kron(ops.pauli('y'), np.eye(2))
+    Z = np.kron(ops.pauli('z'), np.eye(2))
+    I4 = np.eye(4)
+
+    # bond state 0 carries the -z y term, state 1 the +y z term
+    Wl = np.zeros((4, 4, 1, 2), dtype=complex)
+    Wl[:, :, 0, 0] = -J * g * Z
+    Wl[:, :, 0, 1] = I4
+
+    Wm = np.zeros((4, 4, 2, 2), dtype=complex)
+    Wm[:, :, 0, 0] = Y
+    Wm[:, :, 1, 1] = J * g * Y
+
+    Wr = np.zeros((4, 4, 2, 1), dtype=complex)
+    Wr[:, :, 0, 0] = I4
+    Wr[:, :, 1, 0] = Z
+
+    return ops.mpo([(site - 1, Wl), (site, Wm), (site + 1, Wr)],
+                   np.array([1.0]), np.array([1.0]))
 
 def pad_with_identity(O_mpo, sites, d=4):
     """

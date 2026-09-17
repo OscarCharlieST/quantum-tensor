@@ -32,7 +32,7 @@ import lyapunov.relaxation.response as resp
 # ------------------------------------------------------------------- config
 
 J, H_FIELD, G_FIELD = 1, 0.25, -0.525   # tilted Ising defaults (1702.08894)
-BETA = 1.0                              # inverse temperature of psi_uniform
+BETA = 0.1                              # inverse temperature of psi_uniform
 D = 8                                   # bond dimension, same for every L
 L_VALUES = [4, 8, 12, 16]
 IMAG_STEPS = 60                         # TDVP steps for the imaginary-time build
@@ -113,6 +113,13 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
         'energy_mid': resp.single_copy_energy_density(
             mid, J=J, h=H_FIELD, g=G_FIELD
         ),
+        # The current is the one that gates a diffusion measurement: energy
+        # cannot flow diffusively until the current has reached its
+        # constitutive value, so tau(current) is the time to wait before
+        # fitting D. See README, "The current relaxation time".
+        'current_mid': resp.single_copy_current(
+            mid, J=J, h=H_FIELD, g=G_FIELD
+        ),
     }
 
     result['observables'] = {}
@@ -178,6 +185,19 @@ def main(l_values=L_VALUES):
         taus = [f"{r['observables'][name]['tau_fit']:.3f}" for r in results]
         print(f"  {name:11s} " + "  ".join(
             f"L={r['L']}: {t}" for r, t in zip(results, taus)))
+
+    # The number the diffusion question turns on: energy cannot relax
+    # diffusively faster than the current that carries it, so tau(energy) /
+    # tau(current) has to be >> 1 for a diffusive description to have a
+    # window to live in.
+    if {'energy_mid', 'current_mid'} <= set(results[0]['observables']):
+        print("\n=== separation of scales: tau(energy) / tau(current) ===")
+        for r in results:
+            e, j = r['observables']['energy_mid'], r['observables']['current_mid']
+            print(f"  L={r['L']:<3d} fit {e['tau_fit'] / j['tau_fit']:6.2f}   "
+                  f"1/e {e['tau_cross'] / j['tau_cross']:6.2f}   "
+                  f"(tau_j = {j['tau_fit']:.3f}, in window "
+                  f"[{j['scales']['t_zeno']:.2f}, {j['scales']['t_heis']:.2f}])")
     return results
 
 

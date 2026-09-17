@@ -211,20 +211,47 @@ Scan defaults in `run_relaxation_scan.py`:
 
 | parameter | value | note |
 |---|---|---|
-| `BETA` | 1.0 | see below |
+| `BETA` | 0.1 | see below |
 | `D` | 8 | same for every L, so the tangent dimension grows only through L |
 | `L_VALUES` | 4, 8, 12, 16 | |
 | `IMAG_STEPS` | 60 | TDVP steps for the imaginary-time build |
 | `SEED_NOISE` | 1e-2 | rank seeding, see below |
 
-**On β = 1.** Hotter than the β ≈ 1e-2 to 1e-3 used in `active.ipynb`, and
-deliberately so. At β ≈ 1e-2 the thermofield double is barely entangled —
-its Schmidt spectrum at L=4 is `[1, 5e-3, 1e-8, 7e-11]`, i.e. effectively
-rank 2 — so most of a D=8 tangent space would be built on numerically null
-directions. β = 1 gives a genuinely rank-filling state while keeping the
-fixed-point residual small (~1e-2 against a tangent bandwidth of ~5). If
-the relaxation rates turn out to depend strongly on β, that is a physical
-result worth having, not a nuisance.
+**On β = 0.1** (changed from β = 1 on 2026-09-17). Hydrodynamics is a
+high-temperature expectation, so the standing convention across `lyapunov/`
+is now β = 0.1; this subproject follows it. The cost is real but bounded,
+and is worth stating because the original choice of β = 1 was made to avoid
+exactly this:
+
+| L | β | `s_min` | bandwidth | fixed-point residual | residual/bandwidth |
+|---|---|---|---|---|---|
+| 4 | 1 | 3.9e-07 | 14.8 | 1.0e-02 | 7.0e-04 |
+| 4 | 0.1 | 1.6e-11 | 15.0 | 2.9e-02 | 1.9e-03 |
+| 4 | 0.01 | 9.2e-16 | 13.3 | 2.6e-02 | 2.0e-03 |
+| 8 | 1 | 3.4e-07 | 18.6 | 2.6e-02 | 1.4e-03 |
+| 8 | 0.1 | 8.2e-12 | 16.3 | 4.5e-02 | 2.8e-03 |
+| 12 | 1 | 3.0e-07 | 18.8 | 3.4e-02 | 1.8e-03 |
+| 12 | 0.1 | 4.5e-11 | 16.1 | 4.7e-02 | 2.9e-03 |
+
+Going from β = 1 to β = 0.1 costs four to five orders of magnitude in the
+smallest Schmidt value and roughly doubles the fixed-point residual
+relative to the tangent bandwidth. It is still small — 0.3% — so β = 0.1 is
+usable, and the degradation does not grow with L. **β = 0.01 is not
+usable here**: `s_min` reaches 9e-16, so the tangent space is built on
+numerically null directions and any rate read off it is meaningless.
+
+Note this is the *opposite* of what the `tdvp_lyapunov` temperature scan
+found (conditioning *improves* at high temperature there). There is no
+contradiction: that subproject runs 160 real-time TDVP steps under `H_sym`
+before switching on the tangent vectors, and that transient fills the bond
+dimension. This one works at the imaginary-time fixed point with no such
+transient, so it sees the bare rank collapse of the nearly-unentangled
+thermofield double. **The `tdvp_lyapunov` result does not license high
+temperature here** — the table above is the relevant evidence.
+
+If the relaxation rates turn out to depend strongly on β, that is a
+physical result worth having, not a nuisance. Results recorded in this
+README predating the change were taken at β = 1.
 
 **On the seeding noise.** `inf_T_thermofield` returns a rank-1 state
 zero-padded to bond dimension D, and single-site TDVP cannot grow the
@@ -242,6 +269,87 @@ sweep silently lands in a different gauge. The symptom is a
 `fixed_point_residual` far *larger* than `||H_asym psi||` — impossible for
 a projection, and the check worth keeping in mind for any new overlap built
 on this machinery.
+
+## The current relaxation time (2026-09-17)
+
+The question this was built for: **how long must you wait before energy
+transport is diffusive?** Energy cannot flow diffusively until the current
+has reached its constitutive value `j = -D ∇e`. Starting from local
+equilibrium the current is zero — there are no currents in a local
+equilibrium state, which is why the energy profile is stationary to
+`O(t²)` — so it has to build up first, on the Maxwell–Cattaneo timescale
+`τ ∂_t j + j = -D ∇e`. That `τ` is what `current_mid` measures.
+
+Scan: `L = 4, 8, 12, 16`, `D = 8`, `β = 0.1`, seed 0. Figures
+`figures/D8_timescale_scan.png` and
+`figures/L16_D8_{current,energy}_mid_{spectrum,response}.png`.
+
+| L | τ(current) | τ(energy) | ratio | current `n_eff` | energy `n_eff` |
+|---|---|---|---|---|---|
+| 4 | 0.903 | 3.024 | 3.35 | 30 | 7 |
+| 8 | 0.973 | 1.494 | 1.54 | 177 | 40 |
+| 12 | 0.974 | 1.531 | 1.57 | 324 | 76 |
+| 16 | 0.958 | 1.484 | 1.55 | 383 | 116 |
+
+**1. τ(current) ≈ 0.96 and does not depend on L.** Flat to 2% over
+L = 8–16, well converged, and sitting inside its `[t_zeno, t_heis]`
+window. This is the number the exercise was for: it is *microscopic*, as a
+current relaxation time must be. Against a profile-change time `L²/D` of
+order 10²–10³ at these sizes, that is two to three orders of separation —
+**the wait time is not the obstacle to extracting a diffusion constant.**
+
+**2. The spectral densities have exactly the structure hydrodynamics
+requires.** This is the stronger result, visible in the two `_spectrum.png`
+figures. Weight within `|ω| < 0.25`, as a fraction and relative to what a
+structureless distribution would put there:
+
+| observable | fraction | vs. chance |
+|---|---|---|
+| energy density | 0.37 | 4.7x |
+| current | 0.019 | 0.24x |
+
+The conserved density piles weight up at zero frequency — a single mode at
+ω = 0 carries ~9% of the energy weight on its own — while the current is
+*depleted* there by a factor of four, and is bimodal with peaks at ω ≈ ±1.
+A conserved quantity has a low-frequency pole and its current does not,
+which is the precondition for a finite Green–Kubo `D ∝ A_j(ω→0)`. Nothing
+here had to come out that way, so it is a real check on the whole
+construction.
+
+**3. Read τ from the 1/e crossing, not from `tau_fit`.** Eleven of sixteen
+exponential fits in this scan fail at R² < 0.9, several returning NaN or a
+τ an order of magnitude off (energy at L = 12: `tau_fit` = 30.3 with
+R² = 0.003, against a crossing of 1.53). These responses fall fast and then
+crawl through a slow oscillating tail, which is not one exponential.
+`fit_relaxation_time`'s window logic does not cope, and the scan figure
+therefore plots the crossing as the primary series and overlays fits only
+where R² ≥ 0.9. Fixing the fitter is open work; the crossing needs no model
+and is stable across L where the fit is not.
+
+**4. Caveats, in order of how much they matter.**
+
+- **These are local dephasing times, not hydrodynamic times.** Both τ's are
+  O(1) and flat in L. A hydrodynamic relaxation would grow like L². What is
+  being measured is the autocorrelation of a *local* operator at the fixed
+  point, which dephases locally; the diffusive tail is a small long-time
+  part of it and is invisible to a 1/e crossing. So the ratio τ(energy)/
+  τ(current) ≈ 1.55 is **not** a hydrodynamic separation of scales, and
+  should not be read as one — the comparison that matters for diffusion is
+  τ(current) against `L²/D`, per finding 1.
+- **The current's decay is not exponential.** Being bimodal in ω, its C(t)
+  oscillates: down to 0.03 by t ≈ 1.5, back up to 0.35 at t ≈ 2.6, and on
+  with slowly decaying revivals. τ = 0.96 is a first-crossing time, not a
+  rate.
+- **τ(current) is only 1.5x above its own `t_zeno` = 0.64**, so the window
+  in which an exponential regime could exist is marginal for this
+  observable — narrower than for the energy density.
+- L = 4 is not converged for either observable and should be ignored.
+
+**Open lead.** The zero-frequency weight in finding 2 *is* the Green–Kubo
+integrand. Turning `A_j(ω→0)` into a diffusion constant, and comparing it
+with the `D` from the nonlinear Gaussian-width fits in `qtensor.visualise`,
+is the natural next step and needs no new machinery — but it is a separate
+deliverable and has not been done.
 
 ## Code
 
@@ -266,9 +374,22 @@ environments) and come out exact conjugate transposes.
 
 `response.py`:
 
-- `single_copy_onesite` / `single_copy_energy_density` — observable MPOs
-  acting on the physical copy only (`kron(A, I)`, matching
-  `thermofield.single_copy_expectation`'s convention).
+- `single_copy_onesite` / `single_copy_energy_density` /
+  `single_copy_current` — observable MPOs acting on the physical copy only
+  (`kron(A, I)`, matching `thermofield.single_copy_expectation`'s
+  convention).
+- `single_copy_current(site)` is the energy current *through* `site`,
+  `J g (y_i z_{i+1} - z_{i-1} y_i)`, a three-site operator. It is the
+  current that satisfies continuity with `single_copy_energy_density`,
+  `d<h_l>/dt = <j_l> - <j_{l+1}>` — note `h` is indexed by bond and `j` by
+  site. The symmetrization of the density fixes the form: for the
+  unsymmetrized convention `h_l = J z_l z_{l+1} + 2 a_l`, which is what
+  `operators.ising_commutator` assumes, the current is instead
+  `-2 J g z_{l-1} y_l`, and pairing either density with the other's current
+  breaks continuity at O(1). Only `g` drives transport; the longitudinal
+  field commutes with the coupling and drops out. Verified against dense
+  `i[H, h_l]` on a 6-site chain (residual 8e-16) and the MPO against its
+  dense form exactly.
 - `observable_tangent_vector` — `v_i = <b_i|O|psi*>`, the one vector the
   whole response is built from. With the kick and the measured observable
   both equal to O, the weights are `|u_k|^2` with `u = U† v`: manifestly

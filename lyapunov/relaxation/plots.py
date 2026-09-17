@@ -16,6 +16,14 @@ Or, straight out of a live run:
 
     r = run_one(8)
     plots.plot_spectral_weights(r['omega'], r['observables']['z_mid']['weights'])
+
+`plot_timescale_scan` is the one function here that wants the whole scan
+rather than a single result: how tau behaves across L, whether it sits
+inside the window where a rate means anything, and the ratio between two
+observables. From the CLI:
+
+    python lyapunov/relaxation/plots.py --pickle lyapunov/relaxation/scan_results.pkl \
+        --L 16 --obs current_mid --scan
 """
 
 import os
@@ -363,6 +371,149 @@ def plot_response(times, response, scales=None, tau_fit=None, t_fit_end=None,
     return fig, (ax_lin, ax_log, ax_tau)
 
 
+# --------------------------------------------------------- across the L scan
+
+# One colour per observable, fixed so an observable keeps its colour between
+# the scan figure and the per-observable ones.
+OBS_COLORS = {
+    'current_mid': C_MODEL,
+    'energy_mid': C_DATA,
+    'z_mid': C_AUX,
+    'x_mid': '#7b5cd6',
+}
+OBS_LABELS = {
+    'current_mid': r'current $j_{\rm mid}$',
+    'energy_mid': r'energy $h_{\rm mid}$',
+    'z_mid': r'$z_{\rm mid}$',
+    'x_mid': r'$x_{\rm mid}$',
+}
+
+
+def _obs_style(name, i=0):
+    fallback = ['#7b5cd6', '#c2456e', '#2f8f8f'][i % 3]
+    return OBS_COLORS.get(name, fallback), OBS_LABELS.get(name, name)
+
+
+def plot_timescale_scan(results, names=None, axes=None, title=None,
+                        reference=('energy_mid', 'current_mid'), r2_min=0.9):
+    """
+    How the relaxation times behave across the L scan, and whether they are
+    trustworthy.
+
+    The question this answers is not "what is tau" but "is tau a property of
+    the system or of the box". Three panels:
+
+    1. tau against L. The `1/e` crossing is drawn as the primary series and
+       the exponential fit only where it is actually good (R^2 >= r2_min).
+       That asymmetry is deliberate, not cosmetic: several of these
+       responses fall fast and then crawl through a slow tail, which is not
+       one exponential, and `fit_relaxation_time` then returns an R^2 of a
+       few thousandths and a tau an order of magnitude off the crossing.
+       The crossing needs no model and is stable across L where the fit is
+       not, so it is the number to read. Rejected fits are counted in the
+       annotation rather than hidden.
+    2. Validity: tau against its own [t_zeno, t_heis] window. Exponential
+       decay is only expected inside that window, so a tau sitting on or
+       outside either edge is not a relaxation time -- it is the box.
+    3. The ratio of the two `reference` observables, tau(energy)/tau(current).
+       Both are *local* dephasing times at the fixed point, so this is the
+       separation between the operator that carries energy and the density
+       it carries -- not a hydrodynamic time, which would grow with L.
+    """
+    if names is None:
+        names = list(results[0]['observables'])
+    L = np.array([r['L'] for r in results], dtype=float)
+
+    if axes is None:
+        fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.0))
+    else:
+        fig = axes[0].figure
+    ax_tau, ax_win, ax_ratio = axes
+
+    def series(name, key):
+        return np.array([r['observables'][name].get(key, np.nan)
+                         for r in results], dtype=float)
+
+    # --- panel 1: the robust estimator, with good fits overlaid
+    n_rejected = 0
+    for i, name in enumerate(names):
+        color, label = _obs_style(name, i)
+        ax_tau.plot(L, series(name, 'tau_cross'), 'o-', ms=5, color=color,
+                    label=label)
+        fit, r2 = series(name, 'tau_fit'), series(name, 'r_squared')
+        ok = np.isfinite(fit) & np.isfinite(r2) & (r2 >= r2_min)
+        n_rejected += int((~ok).sum())
+        if ok.any():
+            ax_tau.plot(L[ok], fit[ok], 'x', ms=7, mew=1.6, color=color)
+    ax_tau.set_xlabel('$L$')
+    ax_tau.set_ylabel(r'$\tau$')
+    ax_tau.set_title(rf'$\bullet$ $1/e$ crossing,  $\times$ fit '
+                     rf'(only $R^2 \geq {r2_min:g}$)', fontsize=9, loc='left')
+    if n_rejected:
+        _annotate(ax_tau, [f'{n_rejected} of {len(names) * len(L)} fits',
+                           f'rejected at $R^2 < {r2_min:g}$'])
+    _legend(ax_tau, loc='upper left')
+    _recede(ax_tau)
+
+    # --- panel 2: is tau inside the window where a rate means anything?
+    for i, name in enumerate(names):
+        color, label = _obs_style(name, i)
+        zeno = np.array([r['observables'][name]['scales']['t_zeno']
+                         for r in results])
+        heis = np.array([r['observables'][name]['scales']['t_heis']
+                         for r in results])
+        off = (i - (len(names) - 1) / 2) * 0.22
+        ax_win.vlines(L + off, zeno, heis, color=color, lw=5, alpha=0.28)
+        ax_win.plot(L + off, series(name, 'tau_cross'), 'o', ms=5, color=color,
+                    label=label)
+    ax_win.set_yscale('log')
+    ax_win.set_xlabel('$L$')
+    ax_win.set_ylabel(r'$t$')
+    ax_win.set_title(r'bars: $[t_{\rm zeno}, t_{\rm heis}]$;  dots: $\tau$',
+                     fontsize=9, loc='left')
+    _legend(ax_win, loc='upper left')
+    _recede(ax_win)
+
+    # --- panel 3: the separation of scales that gates a diffusion fit
+    slow, fast = reference
+    if slow in names and fast in names:
+        ratio = series(slow, 'tau_cross') / series(fast, 'tau_cross')
+        ax_ratio.plot(L, ratio, 'o-', ms=6, color=C_MODEL,
+                      label=r'from $1/e$ crossings')
+        ax_ratio.axhline(1.0, color=C_REF, lw=1.2, ls=':')
+        ax_ratio.text(0.98, 0.04, 'no separation of scales below this line',
+                      fontsize=7.5, color=C_REF, ha='right', va='bottom',
+                      transform=ax_ratio.transAxes)
+        finite = np.isfinite(ratio)
+        if finite.any():
+            ax_ratio.set_ylim(0, max(1.6, 1.25 * np.nanmax(ratio[finite])))
+    ax_ratio.set_xlabel('$L$')
+    ax_ratio.set_ylabel(rf"$\tau$({_obs_style(slow)[1]}) / $\tau$({_obs_style(fast)[1]})")
+    ax_ratio.set_title('separation of scales', fontsize=9, loc='left')
+    _legend(ax_ratio, loc='upper left')
+    _recede(ax_ratio)
+
+    if title:
+        ax_tau.figure.suptitle(title, fontsize=10, x=0.01, ha='left')
+    fig.tight_layout()
+    return fig, (ax_tau, ax_win, ax_ratio)
+
+
+def timescale_scan_from_results(results, save_dir=None, prefix='', **kwargs):
+    """plot_timescale_scan off a list of run_one results, optionally saved."""
+    cfg = results[0]
+    kwargs.setdefault(
+        'title', f"relaxation times across the L scan   "
+                 f"D={cfg['D']}, beta={cfg['beta']}")
+    fig, axes = plot_timescale_scan(results, **kwargs)
+    path = None
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        path = os.path.join(save_dir, f'{prefix}timescale_scan.png')
+        fig.savefig(path, dpi=140)
+    return fig, axes, path
+
+
 # ------------------------------------------------ unpackers for run_one dicts
 
 def _result_title(result, name):
@@ -438,6 +589,9 @@ def _cli(argv=None):
                         help='plot from a saved scan_results.pkl instead of '
                              'running; picks the entry matching --L (and --D '
                              'if given)')
+    parser.add_argument('--scan', action='store_true',
+                        help='with --pickle, also write the across-L '
+                             'timescale comparison (all entries, not just --L)')
     parser.add_argument('--seed', type=int, default=None,
                         help='seed the global numpy RNG so the run repeats')
     parser.add_argument('--save-dir', default=None,
@@ -447,9 +601,11 @@ def _cli(argv=None):
                         help='open the figures instead of only saving them')
     args = parser.parse_args(argv)
 
+    all_results = None
     if args.pickle:
         with open(args.pickle, 'rb') as f:
-            results = pickle.load(f)['results']
+            all_results = pickle.load(f)['results']
+        results = all_results
         matching = [r for r in results if r['L'] == args.L
                     and (args.D is None or r['D'] == args.D)]
         if not matching:
@@ -473,6 +629,14 @@ def _cli(argv=None):
                                prefix=f"L{result['L']}_D{result['D']}_")
         for path in paths:
             print('wrote', path)
+
+    if args.scan:
+        if all_results is None or len(all_results) < 2:
+            raise SystemExit('--scan needs a --pickle holding at least two L')
+        _, _, path = timescale_scan_from_results(
+            all_results, save_dir=save_dir,
+            prefix=f"D{all_results[0]['D']}_")
+        print('wrote', path)
     if args.show:
         plt.show()
 

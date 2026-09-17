@@ -149,8 +149,14 @@ Two subprojects, split because the original question had two different answers:
   (`expm_action`, 38x faster than `scipy.expm` at 2n ≈ 4000). A finite-difference route served as the
   independent cross-check and was removed on 2026-09-17 once it agreed. `hlm.py` builds
   local-temperature template modes and measures where their weight sits in the spectrum — the
-  hydrodynamic-mode diagnostic. Driver `run_lyapunov.py`; big h5 files go to
-  `C:\Users\charl\lyapunov_runs` (outside OneDrive). The subproject README has results and next steps.
+  hydrodynamic-mode diagnostic. Drivers: `run_lyapunov.py` (spectrum) and `run_template.py`
+  (`k = 1` — seed the tangent flow with one local-temperature template and watch it; minutes rather
+  than hours, because the cost is the generator and transport, which don't depend on `k`). **New runs
+  default to β = 0.1** (2026-09-17): hydrodynamics is a high-temperature expectation, and the
+  temperature scan found β = 0.1 better conditioned than β = 1 and already saturated. Results tables
+  predating that are at β = 1 and labelled so. `lyapunov/relaxation/` keeps `BETA = 1.0`. Big h5 files
+  go to `C:\Users\charl\lyapunov_runs` (outside OneDrive). The subproject README has results and next
+  steps.
 
 Key result worth not re-deriving: `H_asym` is exactly Hermitian and annihilates the thermofield double
 exactly, so the tangent-space projection has a real spectrum and **all Lyapunov exponents at that fixed

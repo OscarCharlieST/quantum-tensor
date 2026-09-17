@@ -1,3 +1,6 @@
 __pycache__/
 # Lyapunov run files: hundreds of MB to GB each
 lyapunov/tdvp_lyapunov/runs/*.h5
+
+# Regenerable scan output (~70 s to rebuild via run_relaxation_scan.py)
+lyapunov/relaxation/scan_results.pkl

@@ -15,7 +15,7 @@ lyapunov/
     tangent_hamiltonian.py      tangent basis + projected Hamiltonian
     response.py                 observables, weights, response, rate fitting
     run_relaxation_scan.py      the L scan driver
-  tdvp_lyapunov/                ACTIVE: first scan done (beta = 1)
+  tdvp_lyapunov/                ACTIVE: default beta = 0.1 (see "Defaults")
     README.md                   design, Route B derivation, validation, cost, results, next
     frame.py                    tangent frame at a point; project_to_frame / retract / frame_change
     stepper.py                  one TDVP step as a map: the trajectory
@@ -24,7 +24,11 @@ lyapunov/
     analysis.py                 energy-density profiles of modes, cosine transform
     hlm.py                      local-temperature templates, spectral enrichment; run_hlm.py driver
     plots.py                    per-run figures;  compare_runs.py  cross-run overlays
-    run_lyapunov.py             driver (--route, --n-jobs, --out-dir, --time-only)
+    run_lyapunov.py             spectrum driver (--L --D --beta --k --blocks --time-only)
+    run_template.py             k=1: seed one local-temperature template and watch it
+    mode_dispersion.py          per-vector wavevector content vs exponent
+    long_wavelength_modes.py    free-phase longest-wavelength candidate modes
+    compare_beta.py             temperature comparison across full-spectrum runs
     validate_frame.py (rung 1), validate_benettin.py (rungs 2-3)
     runs/                       logs and queue scripts only; all h5 in C:/Users/charl/lyapunov_runs
     figures/
@@ -77,22 +81,46 @@ alongside the script (weights, response curves, spectra, timings).
 
 ## Results so far
 
-From setup runs at L = 4, 8, 12. **The L = 16 point has not been run and
-`scan_results.pkl` has not been written** — that is the run awaiting your OK.
+Full scan L = 4, 8, 12, 16 at D = 8, **β = 0.1**, seed 0, ~70 s;
+`scan_results.pkl` written. τ from the 1/e crossing of the response (the
+exponential fits are unreliable here — see below):
 
-τ from the 1/e crossing of the response:
+| observable | L=4 | L=8 | L=12 | L=16 |
+|---|---|---|---|---|
+| `z_mid` | 2.021 | 2.050 | 2.131 | 2.189 |
+| `x_mid` | 0.479 | 0.479 | 0.501 | 0.480 |
+| `energy_mid` | 3.024 | 1.494 | 1.531 | 1.484 |
+| `current_mid` | 0.903 | 0.973 | 0.974 | 0.958 |
 
-| observable | L=4 | L=8 | L=12 |
-|---|---|---|---|
-| `z_mid` | — (no decay) | 4.89 | 5.00 |
-| `x_mid` | 0.342 | 0.353 | 0.379 |
-| `energy_mid` | 2.30 | 1.18 | 1.19 |
+Tangent dimensions 191 / 959 / 1727 / 2495. L = 8 onward agree to ~2% for
+everything except L = 4, which is too small.
 
-Tangent dimensions 191 / 959 / 1727; `n_eff` (modes actually carrying
-weight) 8–15 / 49–74 / 103–159.
+- **τ(current) ≈ 0.96, independent of L** — the number the current operator
+  was added for. Microscopic, as a current relaxation time must be, and two
+  to three orders below the `L²/D` profile time. **The wait before
+  transport can look diffusive is not the obstacle.**
+- **The spectral densities separate the way hydrodynamics needs.** Weight
+  within `|ω| < 0.25`: energy density 0.37 (4.7x chance, with a single ω = 0
+  mode carrying ~9% on its own), current 0.019 (0.24x chance, bimodal with
+  peaks at ω ≈ ±1). Conserved density has the low-frequency pole, its
+  current does not — the precondition for a finite Green–Kubo `D`.
+- **τ(energy)/τ(current) ≈ 1.55 is NOT a hydrodynamic separation.** Both are
+  *local* dephasing times at the fixed point; both are flat in L, whereas a
+  hydrodynamic time grows like L². Do not read that ratio as gating
+  diffusion.
+- **`tau_fit` is unreliable in this regime**: 11 of 16 fits fail at
+  R² < 0.9, some NaN, some an order of magnitude off the crossing
+  (energy at L = 12: 30.3 at R² = 0.003 against a crossing of 1.53). The
+  responses fall fast then crawl through an oscillating tail, which is not
+  one exponential. Fixing `fit_relaxation_time` is open work; the scan
+  figure plots crossings and overlays fits only where R² ≥ 0.9.
 
-L = 8 → 12 agree to ~2% for `z_mid` and `energy_mid`, so it does look
-convergent. L = 4 is clearly too small to say anything.
+Figures: `figures/D8_timescale_scan.png` (across L) and
+`figures/L16_D8_{current,energy}_mid_{spectrum,response}.png`.
+
+Next: `A_j(ω→0)` is the Green–Kubo integrand, so turning it into a `D` and
+comparing with the nonlinear Gaussian-width `D` from `qtensor.visualise`
+needs no new machinery. Not done.
 
 ## Validations passed
 
@@ -160,14 +188,37 @@ Fix: derive `C^n` from the bond matrices (`C^n = Λ^{n-1} A_R^n`,
 
 Full detail in `tdvp_lyapunov/README.md`; this is the practical summary.
 
+### Defaults (2026-09-17)
+
+**New runs are at β = 0.1 unless there is a reason otherwise.** Hydrodynamics
+is a high-temperature expectation, so hunting it at low temperature is the
+wrong place; the temperature scan below independently shows β = 0.1 is
+better conditioned than β = 1 and already saturated (β = 0.01 adds nothing).
+`run_lyapunov.py` and `run_template.py` carry this default. The earlier
+results tables are at β = 1 and are labelled as such — they are not
+superseded, but new work should not be compared to them across temperature
+without checking the scan. `relaxation/` now also defaults to β = 0.1, but
+the cost there is real and measured (see its README): `s_min` falls from
+4e-7 to ~1e-11, because that subproject works at the imaginary-time fixed
+point with no real-time transient to fill the bond dimension. **β = 0.01 is
+unusable there** (`s_min` ~ 1e-15). The `tdvp_lyapunov` finding that
+conditioning improves at high temperature does *not* carry across.
+
+Carry forward the one caveat: template enrichment was *q-selective* at
+β = 1 and nearly flat at β ≤ 0.1, measured on L = 8 (7 wavevectors only).
+q-resolved results at the new default want L = 16.
+
 ### What runs
 
-    python lyapunov/tdvp_lyapunov/run_lyapunov.py --L 8 --D 8 --route A --n-jobs 16 \
+    python lyapunov/tdvp_lyapunov/run_lyapunov.py --L 8 --D 8 \
         --blocks 250 --transient 160 --dt 0.05 --store-Q-every 25 \
         --out-dir C:/Users/charl/lyapunov_runs
+    python lyapunov/tdvp_lyapunov/run_template.py --L 16 --D 3 --blocks 80 --kmode 1 \
+        --out-dir C:/Users/charl/lyapunov_runs        # k=1, ~5 min
     python lyapunov/tdvp_lyapunov/plots.py C:/Users/charl/lyapunov_runs/L8_D8_beta1.h5 --discard 20 --clv
     python lyapunov/tdvp_lyapunov/compare_runs.py
     python lyapunov/tdvp_lyapunov/run_hlm.py C:/Users/charl/lyapunov_runs/L16_D4_beta1.h5 --m 120
+    python lyapunov/tdvp_lyapunov/mode_dispersion.py C:/Users/charl/lyapunov_runs/L16_D4_beta1_k2n.h5
 
 Validation: `validate_frame.py` (frame primitives), `validate_benettin.py
 [2|3]` (full-Hilbert-space and fixed-point limits). `--time-only` measures
@@ -247,6 +298,33 @@ centroid, width, peak; then lambda against q, coloured by width.
   is in the sign.
 - Slope 0.086 at beta = 1 (same at L = 8 and 16), 0.16 at beta = 0.01.
 - Cost: 9 s per stored block for all 1374 vectors.
+- **FLAGGED, UNRESOLVED: the `q_bar` estimator is biased and all of the
+  above may be an artefact.** Calibrated on known-q profiles, the
+  phase-free family is ~30x overcomplete, so it is a smoothed scan rather
+  than a decomposition. True q = 0.209 and 0.419 both return q_bar ~ 0.39-0.43
+  (the long-wavelength end has no resolution), and a *random* profile
+  returns q_bar ~ 1.45 — which is where q0 = 1.4 sits. Do not lean on the
+  linear fit or on q0 until this is redone against an orthonormal basis.
+  Full table and reasoning in the subproject README.
+
+### Seeded single template (2026-09-17)
+
+`run_template.py`, L = 16, D = 3, beta = 0.1, k = 1, 80 blocks, ~4.5 min.
+Seeds the flow with the k = 1 local-temperature template instead of
+computing a spectrum.
+
+- **The seed is clean**: 97.8% of its DCT power at q1 = 0.209.
+- **The first-step growth rate is +0.024** against a top exponent of ~0.53
+  — the long-wavelength temperature mode is a near-neutral direction, and
+  this costs one step to measure.
+- **Alignment is fast, as expected**: overlap with the template halves by
+  t ~ 0.55, is 1/10 by t ~ 1.4, 0.4% by t = 4, while the instantaneous rate
+  climbs to a peak +0.87 at t ~ 0.65 and settles at ~0.53. **The usable
+  window is t < 0.5, i.e. ~10 steps.** Any use of this method must be
+  short-window plus re-seeding, not a long run.
+- The *energy profile* keeps the seeded cos(q j) shape much longer than
+  the vector keeps the template — the 15-dimensional profile is a shadow of
+  a 784-dimensional vector, and the two decorrelate at different rates.
 
 ### Things learned the hard way
 
