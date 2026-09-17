@@ -844,9 +844,71 @@ specific to the mode.
 q-dependence exists, and preferably at L = 16 for wavevector resolution.
 High temperature gives a stronger but scale-free signal.
 
+### Per-vector dispersion (2026-09-17): lambda is linear in q, not diffusive
+
+`mode_dispersion.py`. For every Lyapunov vector: its energy-density
+profile, then a **phase-free power spectrum** over a fine q grid -- at each
+q the power is the projection onto the 2D family {cos(q(j+1/2)),
+sin(q(j+1/2))} with the uniform component removed, so a phase-shifted wave
+lands at one q instead of being split between DCT bins. From that, the
+centroid `q_bar`, its width `sd`, and the peak `q_peak`. No bands, no
+templates, and measured in the Gram-Schmidt basis, which is exactly
+orthonormal. 1374 vectors take 9 s per block.
+
+**The structure is entirely in the sign of lambda.** At L = 16, D = 4,
+beta = 1, pooling three blocks (4122 vectors):
+
+| q_bar bin | vectors | median abs(lambda) | mean lambda |
+|---|---|---|---|
+| 0.5-1.0 | 443 | 0.055 | **-0.054** |
+| 1.0-1.5 | 963 | 0.053 | -0.002 |
+| 1.5-2.0 | 557 | 0.051 | **+0.025** |
+| 2.0-2.5 | 97 | 0.060 | **+0.070** |
+
+`abs(lambda)` is flat in q (log-log slope -0.03), but the *signed* mean
+rises monotonically and crosses zero near q_bar = 1.37. Long-wavelength
+energy profiles belong to contracting vectors, short-wavelength ones to
+expanding vectors -- the per-vector form of the template asymmetry, with no
+band choice involved.
+
+**The relation is linear in q, and that is not diffusive.** Weighted fits
+to the binned means:
+
+| run | lambda vs q (R², chi2/dof) | lambda vs q² (R², chi2/dof) | slope | zero at |
+|---|---|---|---|---|
+| L=16, D=4, beta=1 | **0.966, 1.6** | 0.907, 4.0 | +0.0867 | q = 1.37 |
+| L=8, D=8, beta=1 | 0.624, 2.3 | 0.434, 3.8 | +0.0857 | q = 1.49 |
+| L=8, D=8, beta=0.01 | **0.925, 1.4** | 0.896, 2.5 | +0.1608 | q = 1.44 |
+
+A diffusive branch would need `abs(lambda) ~ q^2`; instead the contracting
+branch's magnitude *decreases* with q (slope -0.75) while the expanding
+branch grows roughly linearly (+1.10). The slope of the signed relation is
+the same at L = 8 and L = 16 for beta = 1 (0.086) and roughly doubles at
+beta = 0.01, while the crossing sits at q0 = 1.4 +- 0.1 in all three --
+a wavelength of about 4.5 sites.
+
+Robustness: using the peak instead of the centroid, which spans the full
+zone (0.13-3.00) rather than the centroid's compressed 0.49-2.46, linear
+still beats q² (R² 0.896 vs 0.680), and restricting to the sharpest
+quarter of vectors changes nothing (0.949 vs 0.887). The L = 8, beta = 1
+fit is the poor one (R² 0.62) -- 7 bonds is not much resolution.
+
+**Caveats.** `q_bar` is the centroid of a broad distribution (median width
+0.83 out of a zone of pi), so individual vectors do not have a sharp
+wavevector; this is a statistical statement over thousands of them.
+Individual vectors inside a near-degenerate cluster are numerically
+arbitrary, which is fine for a statistic pooled over the whole spectrum but
+not for reading any one vector.
+
 ## Next
 
-1. **Diffusive scaling of the split** (the current line of interest). The
+1. ~~**Diffusive scaling of the split**~~ — done, negatively: see
+   "Per-vector dispersion". lambda is linear in q with a zero crossing at
+   q0 ~ 1.4, and no q² branch. What is left is to understand *why* linear:
+   the natural next probe is the time-resolved weighted decay
+   `C(t) = sum_i w_i(q) exp(lambda_i t)`, whose long-time behaviour is set
+   by the slowest weighted modes rather than by the mean used so far.
+2. **(superseded framing)** the old plan: The
    temperature/time-shift asymmetry is now a q-resolved number: define a
    rate from it — e.g. the band-weighted `λ` of the temperature template,
    `Σ_i w_i(q) λ_i`, which is a genuine decay rate of that perturbation —

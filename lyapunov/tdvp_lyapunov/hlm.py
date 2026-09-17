@@ -158,6 +158,117 @@ def template_vectors(frame, k_max=4, which='phys', **params):
     return q, out
 
 
+def profile_template(frame, c, which='phys', w=None, **params):
+    """
+    The template vector for an arbitrary profile shape c (one coefficient
+    per bond): a(c) = 2 realify(P_tangent sum_j c_j h_j |psi>), the exact
+    gradient of  y -> sum_j c_j delta<h_j>(y).  template_vectors is the
+    special case c = a DCT-II cosine.
+    """
+    if w is None:
+        w = bond_tangent_vectors(frame, which, **params)
+    return 2.0 * realify(sum(cj * wj for cj, wj in zip(c, w)))
+
+
+def sinusoid_family(n_bonds, q, drop_uniform=True):
+    """
+    Orthonormal basis of the profile shapes available at wavevector q with
+    a *free phase*: the span of cos(q(j+1/2)) and sin(q(j+1/2)).
+
+    Restricting to cosine is a choice of probe, not a restriction of the
+    representable space (the DCT-II cosines are already complete), but a
+    phase-shifted mode spreads over several cosines and is missed by any
+    one of them. Hence the 2D family.
+
+    The uniform profile is projected out first: at the DCT frequencies
+    q = pi k / N the cosines are automatically orthogonal to it, but for a
+    free phase they are not, and the uniform component is the (conserved)
+    total energy rather than a transport mode. At q = 0 that leaves
+    nothing, and near the zone boundary the sine can become degenerate, so
+    the returned basis has 0, 1 or 2 columns.
+    """
+    j = np.arange(n_bonds) + 0.5
+    M = np.column_stack([np.cos(q * j), np.sin(q * j)])
+    if drop_uniform:
+        u = np.ones(n_bonds) / np.sqrt(n_bonds)
+        M = M - np.outer(u, u @ M)
+    U, s, _ = la.svd(M, full_matrices=False)
+    return U[:, s > 1e-10 * max(s[0], 1e-30)]
+
+
+def best_mode_in_subspace(V_band, A):
+    """
+    Given a band (columns of V_band, not assumed orthonormal) and an
+    orthonormal set of template directions A (columns), find the unit
+    combination of A that the band represents best.
+
+    Returns (coefficients over A, captured fraction, the projected vector).
+    Solving the 2x2 (or 1x1) eigenproblem of A^T Pi_band A is the free-phase
+    generalization of "project the single cosine template".
+    """
+    G = V_band.T @ V_band
+    B = V_band.T @ A
+    Y = la.solve(G, B, assume_a='pos')          # coefficients of Pi_band A
+    S = B.T @ Y                                  # A^T Pi_band A, PSD
+    vals, vecs = la.eigh(S)
+    x = vecs[:, -1]
+    proj = V_band @ (Y @ x)
+    return x, float(np.sqrt(max(vals[-1], 0.0))), proj
+
+
+def fit_sinusoid(profile, q):
+    """
+    Amplitude and phase of the best cos(q(j+1/2) + phi) fit to a profile,
+    and the fraction of the profile's power it explains.
+    """
+    j = np.arange(len(profile)) + 0.5
+    M = np.column_stack([np.cos(q * j), -np.sin(q * j)])
+    coef, *_ = la.lstsq(M, profile)
+    amp = float(np.hypot(*coef))
+    phase = float(np.arctan2(coef[1], coef[0]))
+    resid = profile - M @ coef
+    frac = 1.0 - float(resid @ resid) / float(profile @ profile)
+    return amp, phase, frac
+
+
+def phase_free_power(profiles, q_grid, drop_uniform=True):
+    """
+    Power of each profile at each wavevector, free of phase: at q the power
+    is the squared projection onto the 2D family {cos(q(j+1/2)),
+    sin(q(j+1/2))} with the uniform component removed. A phase-shifted wave
+    therefore lands at one q instead of being split across neighbouring
+    DCT bins.
+
+    profiles : (m, n_bonds)   q_grid : (n_q,)   ->  (m, n_q)
+    """
+    profiles = np.atleast_2d(profiles)
+    n_bonds = profiles.shape[1]
+    out = np.zeros((profiles.shape[0], len(q_grid)))
+    for i, q in enumerate(q_grid):
+        B = sinusoid_family(n_bonds, q, drop_uniform)
+        if B.shape[1]:
+            out[:, i] = np.sum((profiles @ B) ** 2, axis=1)
+    return out
+
+
+def spectral_moments(q_grid, power):
+    """
+    Centroid, standard deviation and peak position of each power
+    distribution over q. Returns (mean, sd, peak), each of length m.
+    """
+    power = np.atleast_2d(power)
+    total = power.sum(1)
+    good = total > 0
+    mean = np.full(len(power), np.nan)
+    sd = np.full(len(power), np.nan)
+    peak = np.full(len(power), np.nan)
+    w = power[good] / total[good, None]
+    mean[good] = w @ q_grid
+    sd[good] = np.sqrt(np.clip(w @ q_grid ** 2 - mean[good] ** 2, 0, None))
+    peak[good] = q_grid[np.argmax(power[good], axis=1)]
+    return mean, sd, peak
+
+
 def template_spectral_weights(Q, a):
     """
     Distribution of a template over the Gram-Schmidt vectors (columns of Q,

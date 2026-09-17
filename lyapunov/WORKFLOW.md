@@ -232,6 +232,22 @@ L = 8, D = 8, full spectrum, beta = 1 / 0.1 / 0.01 (`compare_beta.py`).
   beta = 1. Scale separation is a beta = 1 feature. Recheck at L = 16
   before leaning on it.
 
+### Per-vector dispersion (2026-09-17)
+
+`mode_dispersion.py`, on L16_D4_beta1_k2n (best q resolution per unit cost:
+15 bonds, cheap D, full spectrum). Per vector: energy profile -> phase-free
+power spectrum (projection onto {cos, sin} at each q, uniform removed) ->
+centroid, width, peak; then lambda against q, coloured by width.
+
+- **lambda is linear in q**, crossing zero at q0 = 1.4 +- 0.1 (wavelength
+  ~4.5 sites). R2 0.97 linear vs 0.91 for q^2 at L=16; the ordering holds
+  for every run and for both the centroid and the peak statistic.
+- **Not diffusive**: the contracting branch's magnitude *decreases* with q
+  (slope -0.75), and abs(lambda) overall is flat in q. All of the structure
+  is in the sign.
+- Slope 0.086 at beta = 1 (same at L = 8 and 16), 0.16 at beta = 0.01.
+- Cost: 9 s per stored block for all 1374 vectors.
+
 ### Things learned the hard way
 
 - **`retract` must canonicalize losslessly before truncating.** The block
