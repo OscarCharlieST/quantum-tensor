@@ -20,23 +20,22 @@ sys.path.insert(0, os.getcwd())
 from lyapunov.tdvp_lyapunov.plots import load_run, FIGS, MUTED, BLUE, ORANGE, AQUA
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LOCAL = os.path.join(HERE, 'runs')
-EXTERNAL = 'C:/Users/charl/lyapunov_runs'
+RUNS = 'C:/Users/charl/lyapunov_runs'     # h5 files live outside OneDrive
 
 SCANS = {
     'L_scan': ('D = 4, L scan', [
-        ('L = 8',  f'{EXTERNAL}/L8_D4_beta1_dt025.h5'),
-        ('L = 12', f'{LOCAL}/L12_D4_beta1.h5'),
-        ('L = 16', f'{EXTERNAL}/L16_D4_beta1.h5'),
+        ('L = 8',  f'{RUNS}/L8_D4_beta1_dt025.h5'),
+        ('L = 12', f'{RUNS}/L12_D4_beta1.h5'),
+        ('L = 16', f'{RUNS}/L16_D4_beta1.h5'),
     ]),
     'D_scan': ('L = 8, D scan', [
-        ('D = 4',  f'{EXTERNAL}/L8_D4_beta1_dt025.h5'),
-        ('D = 8',  f'{EXTERNAL}/L8_D8_beta1.h5'),
-        ('D = 12', f'{EXTERNAL}/L8_D12_beta1.h5'),
+        ('D = 4',  f'{RUNS}/L8_D4_beta1_dt025.h5'),
+        ('D = 8',  f'{RUNS}/L8_D8_beta1.h5'),
+        ('D = 12', f'{RUNS}/L8_D12_beta1.h5'),
     ]),
     'dt_route': ('L = 8, D = 4: time step and route', [
-        ('Route B, dt = 0.05',  f'{LOCAL}/L8_D4_beta1.h5'),
-        ('Route A, dt = 0.025', f'{EXTERNAL}/L8_D4_beta1_dt025.h5'),
+        ('Route B, dt = 0.05',  f'{RUNS}/L8_D4_beta1.h5'),
+        ('Route A, dt = 0.025', f'{RUNS}/L8_D4_beta1_dt025.h5'),
     ]),
 }
 

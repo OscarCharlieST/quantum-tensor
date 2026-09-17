@@ -27,8 +27,10 @@ no built-in truncation, no graph/network abstraction. `quimb` and `tenpy` appear
 `quimbtest.ipynb` / `tenpy_test.ipynb` as external references/comparisons — they are not used by
 `qtensor` itself and shouldn't be treated as dependencies of the package.
 
-`lyapunov/tdvp_lyapunov` additionally uses `joblib` (parallel Route A). Only the Anaconda base env
-(`C:\Users\charl\anaconda3\python.exe`) has the dependencies; bare `python` in the shell is the Store stub.
+Only the Anaconda base env (`C:\Users\charl\anaconda3\python.exe`) has the dependencies; bare `python`
+in the shell is the Store stub. CuPy was tried for the Lyapunov work and removed: float64 on a consumer
+GPU runs at 1/64 of float32, measured 1.1x versus the CPU. If it is ever revisited, note that CuPy 14
+requires numpy >= 2, which this repo cannot take (`np.product` in `updatemethod.exact`).
 
 Other runtime dependencies actually imported by `qtensor`: `h5py` (state checkpointing), `progressbar`
 (sweep progress bar in `tdvp`), `matplotlib` (`qtensor/visualise.py`, `qtensor/thermofield.py`), and
@@ -141,11 +143,13 @@ Two subprojects, split because the original question had two different answers:
   a Ginelli backward pass for covariant vectors, hunting hydrodynamic Lyapunov modes. Tangent vectors
   are real coordinates in the orthonormal `V_L` frame of a *single* canonicalization pass per point
   (`frame.py`); only Hilbert-space overlaps ever cross between points, which is what makes the gauge
-  drift harmless. Two routes to the one-step tangent map, cross-validated: Route A (`stepper.py`)
-  finite-differences the unmodified TDVP step, parallel over columns with joblib (`--n-jobs 16`);
-  Route B (`tangent_generator.py`) is the exact generator `−i(H_tan X + conj(K X))`, where `K` is the
-  second fundamental form contracted with `(1−P)Hψ`, with polar-factor transport between frames. B is
-  faster for n ≲ 700, A above. Driver `run_lyapunov.py`; big h5 files go to
+  drift harmless. The one-step tangent map is the exact generator `−i(H_tan X + conj(K X))`
+  (`tangent_generator.py`), where `K` is the second fundamental form contracted with `(1−P)Hψ`, with
+  polar-factor transport between frames and the exponential applied to the vectors rather than formed
+  (`expm_action`, 38x faster than `scipy.expm` at 2n ≈ 4000). A finite-difference route served as the
+  independent cross-check and was removed on 2026-09-17 once it agreed. `hlm.py` builds
+  local-temperature template modes and measures where their weight sits in the spectrum — the
+  hydrodynamic-mode diagnostic. Driver `run_lyapunov.py`; big h5 files go to
   `C:\Users\charl\lyapunov_runs` (outside OneDrive). The subproject README has results and next steps.
 
 Key result worth not re-deriving: `H_asym` is exactly Hermitian and annihilates the thermofield double

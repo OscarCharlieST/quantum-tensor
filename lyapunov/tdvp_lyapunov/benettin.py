@@ -38,9 +38,9 @@ import scipy.linalg as la
 import qtensor.operators as ops
 
 from lyapunov.tdvp_lyapunov.frame import Frame
-from lyapunov.tdvp_lyapunov.stepper import tdvp_step, tangent_map, lanczos_method
+from lyapunov.tdvp_lyapunov.stepper import tdvp_step, lanczos_method
 from lyapunov.tdvp_lyapunov.tangent_generator import (
-    generator, half_step_propagator, parallel_transport, propagate,
+    generator, parallel_transport, propagate,
 )
 
 
@@ -72,10 +72,10 @@ def load_frame(grp):
     return Frame.from_tensors(read('A_L'), read('A_R'), read('V_L'))
 
 
-def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None, eps=1e-5,
-             max_bond_dim=np.inf, scheme='forward', transient_steps=0,
+def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None,
+             max_bond_dim=np.inf, transient_steps=0,
              store_path=None, store_Q_blocks=(), seed=0, Q0=None,
-             verbose=True, route='B', n_jobs=1):
+             verbose=True):
     """
     Run the forward Benettin iteration from psi0 under the MPO H.
 
@@ -84,10 +84,6 @@ def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None, eps=1e-5,
     k : number of tangent vectors carried (<= 2n). k = n covers the
         non-negative half of a +/- paired spectrum.
     tau : TDVP steps per QR.
-    route : 'B' (exact generator + parallel transport, tangent_generator)
-        or 'A' (finite differences through the TDVP step, stepper).
-    eps, scheme : finite-difference step and scheme for route A.
-    n_jobs : worker processes for route A's clone steps.
     transient_steps : steps of plain TDVP before the tangent vectors are
         switched on.
     store_path : h5 file for R, diagnostics, and Q/frames at
@@ -108,7 +104,7 @@ def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None, eps=1e-5,
         print(f"tangent dimension n = {n} (real 2n = {2 * n}), k = {k}, "
               f"bond dims {frame.bond_dims()}")
     Q = orthonormal_random(2 * n, k, seed) if Q0 is None else Q0.copy()
-    E = half_step_propagator(generator(frame, H), dt) if route == 'B' else None
+    A = generator(frame, H)
 
     log_diag = np.zeros((n_blocks, k))
     times = np.zeros(n_blocks)
@@ -118,9 +114,8 @@ def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None, eps=1e-5,
     f = None
     if store_path is not None:
         f = h5py.File(store_path, 'w')
-        f.attrs.update({'dt': dt, 'tau': tau, 'k': k, 'n': n, 'eps': eps,
-                        'scheme': scheme, 'transient_steps': transient_steps,
-                        'route': route})
+        f.attrs.update({'dt': dt, 'tau': tau, 'k': k, 'n': n,
+                        'transient_steps': transient_steps})
         # R is upper triangular, so half zeros: lzf roughly halves it, cheaply
         R_store = f.create_dataset('R', (n_blocks, k, k), dtype='f8',
                                    chunks=(1, k, k), compression='lzf')
@@ -139,14 +134,9 @@ def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None, eps=1e-5,
         for _ in range(tau):
             psi_next = tdvp_step(psi, H, dt, method)
             frame_next = Frame(psi_next, max_bond_dim)
-            if route == 'B':
-                E_next = half_step_propagator(generator(frame_next, H), dt)
-                Q = propagate(Q, E, parallel_transport(frame, frame_next), E_next)
-                E = E_next
-            else:
-                Q = tangent_map(frame, frame_next, Q, H, dt, method, eps,
-                                max_bond_dim, scheme, n_jobs=n_jobs)
-            psi, frame = psi_next, frame_next
+            A_next = generator(frame_next, H)
+            Q = propagate(Q, A, parallel_transport(frame, frame_next), A_next, dt)
+            A, psi, frame = A_next, psi_next, frame_next
             t += dt
         Q, R = positive_qr(Q)
         log_diag[j] = np.log(np.diag(R))

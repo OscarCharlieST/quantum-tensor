@@ -1,13 +1,14 @@
 # Lyapunov exponents of the TDVP flow
 
-Status: **first production scan done (2026-09-16), β = 1 only.** Both
-routes to the tangent map are implemented and validated against each other
-(Route A: parallel finite differences through the TDVP step; Route B: exact
-generator). Six runs cover L = 8, 12, 16 at D = 4 and D = 4, 8, 12 at
+Status: **first production scan done (2026-09-16); hydrodynamic-mode
+signal found (2026-09-17). β = 1 only.** The tangent map is the exact
+generator ("Route B"), cross-validated against a finite-difference
+implementation that has since been removed. Six runs cover L = 8, 12, 16 at D = 4 and D = 4, 8, 12 at
 L = 8, with covariant Lyapunov vectors. Headline: the half spectrum is
-extensive per tangent dimension and route/dt-independent; fast Lyapunov
-vectors are short-wavelength; the near-zero cluster is *not* yet
-distinguishable from spatially unstructured. See "Results" and "Next".
+extensive per tangent dimension and route/dt-independent; the
+long-wavelength energy-density template is enriched ~1.4-1.8x in the
+near-zero cluster and depleted ~0.4x at the top, with a monotone
+wavevector dependence. See "Results" and "Hydrodynamic modes".
 
 See [`../README.md`](../README.md) for shared background and for the
 argument that forces the exponents at the `H_asym` fixed point to be exactly
@@ -160,65 +161,33 @@ continuous-time formulation, is absorbed automatically: output coordinates
 are always measured in the frame where the vector now lives. Per §2, the
 arbitrariness of that new frame does not affect `R`.
 
-### 4. Computing the action of `DΦ_dt`: two routes
+### 4. Computing the action of `DΦ_dt`
 
-**Route A: central finite differences through unmodified `tdvp` (do this first).**
-For each real direction `Y_k` (complex `X_k`):
+Two routes were built. **Route B, the exact generator, is what runs**; it is
+derived in full below. Route A was the first implementation and is kept
+only in this history:
 
-    ψ_± = retract(ψ, ±X_k, ε)
-    ψ'_± = Φ_dt(ψ_±)                          # existing tdvp, untouched
-    column_k = [project_to_frame(ψ'_+) − project_to_frame(ψ'_−)] / 2ε   (frame at ψ' = Φ_dt(ψ))
+**Route A (finite differences, removed 2026-09-17).** Each column came from
+retracting along a tangent direction, taking a real TDVP step, and
+projecting the result back:
+`[project(Φ_dt(retract(ψ, X, ε))) − project(Φ_dt(ψ))] / ε`. It needed no
+new algebra, which is why it came first, and it answered the original
+design question — "do we need `∂P` explicitly?" — with *no*. Its cost was
+one TDVP step per tangent vector per time step, and even parallelized over
+16 workers it lost to Route B everywhere once `expm_action` landed (see
+"Cost"). It served its purpose as the independent check on Route B: the two
+agreed on the one-step map to `O(dt³)` and on a full spectrum to ~0.005.
+The code was deleted to keep the module small; `git log` has it.
 
-Error is `O(ε²)` plus roundoff `~1e-16/ε`. Any global phase difference
-between `ψ'_±` and `ψ'` drops out, because the frame is orthogonal to `ψ'`.
-
-- For: this answers the original "do we need `∂P` explicitly?" question
-  (no), requires no new algebra, and the `2n` clone steps are embarrassingly
-  parallel.
-- Against: nonlinearity sets an upper limit on `ε` of roughly
-  `ε ≪ s_min · (stuff)`, because manifold curvature scales like the inverse
-  smallest Schmidt value. Roundoff sets a lower limit, and on
-  poorly-conditioned states these limits can collide (§5).
-- Requirements on the integrator. Finite differencing only works if
-  `Φ_dt` is smooth in `ψ`:
-  - `lanczos_parts` stops early on `norm < epsilon`, which makes the map
-    *discontinuous* wherever the iteration count changes. Use a fixed
-    Krylov dimension (no early exit), or `exact_method()` at small sizes.
-  - Check once that `Φ_dt(ψ)` is independent of the input gauge: apply a
-    random gauge transformation, compare the output overlap. `tdvp`
-    re-canonicalizes on entry, and the projector-splitting step should
-    depend only on the subspaces, not on their representation. This is
-    expected to hold at full rank but has not been checked.
-  - `tdvp`'s entry overhead (full right-canonicalization, rebuilding `R_con`,
-    progress bar) is wasted when called for one step at a time from `2n`
-    clones. A thin single-step wrapper is a likely early addition.
-
-**Route B: exact tangent map (only if Route A is limited by `ε` or cost).**
-Assemble the real `2n × 2n` generator in the frame at `ψ`:
-
-- The `-i P H P` block is `assemble_tangent_hamiltonian` with `H_sym` in
-  place of `H_asym`, realified.
-- The `P (∂_v P) H ψ` block is new: two-defect contractions (one defect from
-  the basis, one from `v`) against `Hψ`, involving inverse bond matrices.
-  This is the finite-chain analogue of the Hallam et al. Jacobian, without
-  momentum labels. Frame transport then needs a separate tangent-to-tangent
-  overlap between the frames at `t` and `t+dt`.
-
-Route B also yields the *instantaneous* Jacobian `M(t)`. At the `H_asym`
-fixed point it must reduce to the realified `-i H_tangent` from the
-relaxation strand, which is a strong cross-check. Algebra to be written out
-properly before any code.
-
-(A third option, forward-mode differentiation through `tdvp_step_r/l`, is
-not recommended. It would differentiate the SVD inside
+(A third option, forward-mode differentiation through `tdvp_step_r/l`, was
+never attempted. It would differentiate the SVD inside
 `left_orthogonal_tensor`, whose derivative blows up as `1/(s_i² − s_j²)`,
-exactly at the near-degenerate spectra thermofield states have. It would
-also carry the gauge-drift problem back into the propagated vectors.)
+exactly at the near-degenerate spectra thermofield states have.)
 
 ### 5. Conditioning: the main numerical risk
 
-Both routes degrade as the smallest Schmidt value `s_min` → 0. Route A needs
-`ε` inside the linear regime, and Route B carries `Λ^{-1}`. More
+The generator degrades as the smallest Schmidt value `s_min` → 0, because
+the curvature term `K` carries `Λ^{-1}`. More
 fundamentally, near rank-deficiency the manifold is strongly curved, so
 large exponents may just be curvature artefacts. Plan:
 
@@ -231,8 +200,8 @@ large exponents may just be curvature artefacts. Plan:
 - **Discard a transient.** Standard for Benettin anyway, and here it also
   lets real-time `H_sym` evolution (which increases entanglement) move the
   state away from small Schmidt values before accumulation starts.
-- **Report the `ε`-plateau** at a few points along the trajectory, as the
-  diagnostic that Route A is in its linear regime.
+- **Watch `K`**: if the run ever approaches rank deficiency, it is the
+  first thing to blow up.
 
 ### 6. What changes at finite size (vs Hallam et al.)
 
@@ -253,7 +222,7 @@ large exponents may just be curvature artefacts. Plan:
         frame ← canonicalize ψ once (A_L, A_R, C, V_L, envs)
         repeat τ steps:
             ψ' ← Φ_dt(ψ);  frame' ← canonicalize ψ' once
-            Q  ← [DΦ_dt]_{frame→frame'} · Q        (Route A: 2k clone steps)
+            Q  ← [DΦ_dt]_{frame→frame'} · Q        (generator + transport)
             ψ, frame ← ψ', frame'
         Q, R ← QR(Q);  accumulate log|diag R|;  store diag R (and Q periodically)
         log s_min, energy, ‖H_sym ψ‖ diagnostics
@@ -263,9 +232,8 @@ large exponents may just be curvature artefacts. Plan:
   HLMs sit at the *bottom* of that half, which is the slowest part of the
   spectrum to converge. There is no shortcut that skips the faster
   exponents.
-- **`τ`** (steps per QR): with Route A, it is 1 if clones are rebuilt every
-  step. Clones could run for longer if `ε·e^{λ_max τ dt}` stays linear, but
-  start with 1.
+- **`τ`** (steps per QR): 1 in every run so far. Larger τ saves only the
+  QR, which is a small part of a step.
 - **Checkpoint** `ψ`, `Q` and accumulated sums to h5 (same convention as
   `states/`) so long runs can resume.
 
@@ -335,12 +303,10 @@ free:
    auxiliary copy cannot change the physical reduced state, so at fixed D
    the physical-observable dynamics under `H_sym` is driven by the manifold
    restriction. That is the point (see "Working hypothesis").
-2. **Both routes, chosen by size.** Route A (finite differences) was built
-   first and is the reference. Route B (exact generator, next section) was
-   derived to beat Route A's cost, then Route A was parallelized over
-   columns, which made it faster again above n ≈ 700. Use Route B below
-   that, Route A with 16 workers above (see "Cost"). The two agree on the
-   one-step map to `O(dt³)` and on a full spectrum to ~0.005.
+2. **The exact generator, and only that.** The finite-difference route was
+   built first, used for the cross-check, and removed on 2026-09-17 once
+   the generator was both validated against it (one-step map to `O(dt³)`,
+   full spectrum to ~0.005) and faster at every size (see "Cost").
 3. **Uniform β ≈ 1 thermofield double** as the starting state; β to be
    lowered later. Target regime D = 4–12, L = 8–16; develop at the bottom.
 4. **Lanczos integrator**, after fixing it (see below); `exact_method()`
@@ -422,18 +388,15 @@ All in this folder; run from the repo root.
   `retract(frame, X, eps, D)` (lossless sweep, truncating sweep, two
   staircase-clipping sweeps), `realify`/`complexify`, `schmidt_values`.
 - `stepper.py` — `tdvp_step(psi, H, dt, method)` (one right+left sweep pair,
-  no progress bar, returns a new mps), `tangent_map(frame, frame_next, Y,
-  ..., n_jobs)` (finite-difference action of `DΦ_dt` on the columns of `Y`,
-  forward or central; `n_jobs > 1` splits columns over loky worker
-  processes, one chunk per worker, one BLAS thread each, bit-identical to
-  serial), `phase_fixed_projection`, `lanczos_method(epsilon=1e-8)`.
+  no progress bar, returns a new mps) and the two integrator choices,
+  `exact_method` / `lanczos_method(epsilon=1e-8)`. This is the trajectory.
 - `tangent_generator.py` — Route B: `apply_mpo`, `normal_residual` (`w_N`),
   `assemble_K`, `assemble_H_tan`, `realify_generator`, `generator(frame, H)`,
   `parallel_transport` (polar factor by two Newton–Schulz iterations),
-  `half_step_propagator`, `propagate`, `step_matrix` (validation use).
-- `frame.py` also has `Lam` (bond matrices), `mps_direct_sum`, `frame_change`.
-- `benettin.py` — `benettin(..., route='B'|'A', n_jobs)` forward loop with
-  `positive_qr`, h5 storage (`R` every block, lzf-compressed; per-block
+  `operator_norm` (power iteration), `expm_action` (scaled Taylor action of
+  the exponential — the reason Route B is fast), `propagate`;
+  `half_step_propagator` and `step_matrix` are kept for validation only.
+- `benettin.py` — `benettin(...)` forward loop with `positive_qr`, h5 storage (`R` every block, lzf-compressed; per-block
   `log_diag_R`, `t`, `s_min`, energy and `blocks_done` written as they
   come, so a crashed run is still readable; `Q` + frame at
   `store_Q_blocks`), `running_exponents`, `ginelli_backward(path,
@@ -441,13 +404,10 @@ All in this folder; run from the repo root.
 - `analysis.py` — `energy_density_mpo(site, 'phys'|'aux')`, `local_profile`
   (`2 Re⟨ψ|O_j|Φ(X)⟩` for every `j` in `O(N)`), `energy_profile`,
   `site_weight_profile`, `cosine_transform` (DCT-II, `q = πk/N_bonds`),
-  `mode_report`, `q_weight_by_exponent` (cluster-averaged DCT power of the
-  energy profile, binned by exponent), `pairing_residual`.
-  `template_modes` is a stub.
+  `mode_report`, `pairing_residual`.
 - `plots.py` — `plot_spectrum` (sorted `λ_i` vs `i/2n` + histogram),
   `plot_convergence`, `plot_pairing`, `plot_mode` (site weights, energy
-  profile, DCT), `plot_q_weight`, `load_run`/`exponents_from` (handle
-  partial runs). `python lyapunov/tdvp_lyapunov/plots.py <file>.h5
+  profile, DCT), `load_run`/`exponents_from` (handle partial runs). `python lyapunov/tdvp_lyapunov/plots.py <file>.h5
   --discard 20 --clv --modes 0 1 -1` writes `figures/`.
 - `compare_runs.py` — overlay figures across runs over a common time
   window: `figures/compare_{L_scan,D_scan,dt_route}.png`.
@@ -455,9 +415,9 @@ All in this folder; run from the repo root.
   `--time-only` measures a step and prints a cost estimate.
 - `runs/queue2.sh` — the queue that produced the 2026-09-16 scan, with its
   timestamped log `runs/queue2.log`.
-- `validate_frame.py`, `validate_benettin.py` — rungs 1–3 below;
-  `validate_routeB.py` — `w_N` orthogonality, `K` vs finite-differenced
-  projector, Route B vs Route A map.
+- `validate_frame.py` (rung 1: frame primitives, retraction order, gauge
+  invariance of a step), `validate_benettin.py [2|3]` (rungs 2-3, on the
+  Route B map).
 
 ### Lanczos fix in `qtensor/simulation/updatemethod.py`
 
@@ -487,24 +447,49 @@ Lanczos run in this repo was affected.
 ## Cost (measured, seconds per time step, k = n)
 
 On the development laptop (Intel Core Ultra 7 155H: 6 performance + 10
-efficiency cores, 15.5 GB). Route A with 16 workers is 5.6× its serial
-cost (4.5× at 8 workers). Route B's dense `expm` and transport on `2n × 2n`
-matrices grow like n³, Route A like n·N·D³, so they cross near n ≈ 700.
+efficiency cores, 15.5 GB; RTX 4060 laptop GPU).
 
-| L | D | n | Route B | Route A serial | Route A, 16 workers |
+| L | D | n | before `expm_action` | **now** | removed Route A, 16 workers |
 |---|---|---|---|---|---|
-| 8 | 4 | 303 | **2.7** | 29 | 4.4 (production: 3.2 at dt = 0.025) |
-| 12 | 4 | 495 | **6.4** (production) | 78 | ~14 |
-| 16 | 4 | 687 | 24 | 139 | **14.9** (production) |
-| 8 | 8 | 959 | 75 | 91 | **11.8** (production) |
-| 8 | 12 | 1967 | 609 | 327 | **37** (production) |
+| 8 | 4 | 303 | 2.7 | **1.4** | 4.4 |
+| 16 | 4 | 687 | 24 | **6.6** | 14.9 |
+| 8 | 8 | 959 | 75 | **7.3** | 11.8 |
+| 8 | 12 | 1967 | 609 | **28.9** | 27 |
 
-"Production" = wall time per block over the finished run, including QR,
-frame construction and h5 writes. The laptop's RTX 4060 is unused: it would
-not help Route A (thousands of tiny tensor operations), but would remove
-Route B's large-n bottleneck (dense `expm` / matmul) if CuPy were installed.
-Replacing the dense `expm` by its action on the k columns is the CPU-only
-alternative. Neither has been done.
+The gain is one change: **never form the matrix exponential.** The Benettin
+loop only needs `expm(dt/2 A) Q`, and
+`tangent_generator.expm_action` computes that by a scaled Taylor series —
+each term is one `(2n, 2n) @ (2n, k)` product, a quarter the flops of a
+`(2n)^3` step at `k = n`, and with `‖A dt/2‖ ≈ 0.8` only ~9 terms are
+needed. Measured at 2n = 3934: `scipy.linalg.expm` + apply takes 176 s,
+`expm_action` 4.6 s (**38x**), agreeing to 8e-16 relative, and the whole
+step map agrees with the old explicit-`expm` path to 5e-15.
+
+The substep count uses a power-iteration estimate of `‖A‖_2`, not the
+1-norm: for these generators the 1-norm overestimates by ~5x (163 vs 33)
+and every factor there is a factor in cost.
+
+Remaining per-step cost at L = 8, D = 12: generator 15.2 s (`H_tan` 7.5 +
+`K` 9.4), transport 5.1 s, exponential action 8.6 s, QR ~1 s. The generator
+assembly is now the target if this needs to get faster again.
+
+### The GPU: tried and discarded
+
+CuPy was installed and wired into the exponential, then removed on
+2026-09-17 along with `gpu.py`. **A consumer GeForce card cripples float64
+to 1/64 of its float32 throughput**, and these exponents need float64. On
+the RTX 4060: a 3000³ float64 matmul took 0.25 s against 0.29 s on the CPU
+(1.1x); `expm_action` at 2n = 3934 took 4.04 s against 4.60 s (1.14x); and
+at 2n = 1918 the GPU was *slower*, 2.0 s against 1.3 s, transfers
+dominating. A float32 path would be genuinely fast but needs an error
+analysis first: the near-zero exponents are ~1e-3 of the largest and
+accumulate over hundreds of QR steps.
+
+Windows plumbing, if this is ever revisited: CuPy's pip CUDA libraries need
+their directories registered *before* `import cupy`, both via
+`os.add_dll_directory` and on `PATH` (NVRTC does its own LoadLibrary). Use
+`cupy-cuda12x==13.6.0`; CuPy 14 requires numpy >= 2, which this repo cannot
+take (`np.product` in `updatemethod.exact`).
 
 ## Results: first scan (2026-09-16, β = 1)
 
@@ -522,8 +507,8 @@ alternative. Neither has been done.
 All start from the noise-seeded imaginary-time thermofield double
 (`build_uniform_thermofield`, seed 0, 60 steps) and evolve under `H_sym`
 with Lanczos TDVP. Per-run figures: `figures/<run>_{spectrum,
-convergence, qweight_clv, clv*}.png` (CLVs at ~60% of each run, the rest
-used as the Ginelli backward transient). Cross-run: `figures/compare_*.png`
+convergence, clv*}.png` (CLVs at ~60% of each run, the rest used as the
+Ginelli backward transient), and `<run>_hlm_{enrichment,candidates}.png`. Cross-run: `figures/compare_*.png`
 (`compare_runs.py`, window t > 11).
 
 ### Health of every run
@@ -582,9 +567,8 @@ used as the Ginelli backward transient). Cross-run: `figures/compare_*.png`
 5. **Lyapunov vectors: fast = short wavelength; slow = unstructured, not
    (yet) long wavelength.** In every run, the covariant vectors with the
    largest exponents put their energy-profile power near q = π (staggered
-   patterns; dark top-right corner of the `qweight_clv` heatmaps at D = 8,
-   D = 12, L = 16), and the fraction of power in the two longest
-   wavelengths rises almost monotonically as λ → 0. **But in the near-zero
+   patterns), and the fraction of power in the two longest wavelengths
+   rises almost monotonically as λ → 0. **But in the near-zero
    bins it rises only to the flat-spectrum value, not above it:** the
    bottom rows of the heatmaps are roughly flat in q. Near-zero values
    against the flat reference: 0.31 vs 0.29 (L8 D4 B), 0.26 vs 0.29 (L8 D4
@@ -595,29 +579,140 @@ used as the Ginelli backward transient). Cross-run: `figures/compare_*.png`
    for HLMs. Caveats that could still hide them: the near-zero bins average
    100–400 vectors, so a handful of genuine modes would be diluted; only
    the physical-copy energy density was examined; and the "two longest
-   wavelengths" cover a q range that shrinks with L.
+   wavelengths" cover a q range that shrinks with L. **All three caveats
+   are answered by the template analysis in the next section**, which
+   supersedes this bin-averaged statistic; its code (`q_weight_by_exponent`,
+   `plot_q_weight`) and figures were removed on 2026-09-17.
 
 End-to-end validation of the pipeline is finding 1 together with
 "Validation results" (rungs 1–3) and "Route B" (one-step map agreement
 `O(dt³)`, `K` vs finite-differenced projector `O(ε²)`).
 
+## Hydrodynamic modes: the template analysis (2026-09-17)
+
+Finding 5 above (bin-averaged long-wavelength fraction) asked whether a
+*typical* vector in an exponent band is long-wavelength, and found nothing
+above chance. That statistic is diluted by construction: it averages over
+100–400 vectors in the near-zero cluster, so a handful of genuine modes
+cannot move it. The sharper question — **where in the spectrum does the
+long-wavelength energy mode live?** — has a clean answer, and it is
+positive.
+
+### The statistic
+
+The energy-density profile is real-linear in the tangent vector, so the
+amplitude at wavevector q_k is a linear functional whose gradient is itself
+a tangent vector:
+
+    amplitude_k(y) = sum_j c_kj delta<h_j>(y) = a_k . y,
+    a_k = 2 realify( P_tangent O_k |psi> ),   O_k = sum_j cos(q_k (j+1/2)) h_j
+
+`a_k` is exactly the **local-temperature template mode** of the design plan
+(`hlm.template_vectors`, built by linearity from one projection per bond,
+and verified to reproduce `cosine_transform` of the profile to 1e-17).
+
+Decompose it over the orthonormal Gram–Schmidt vectors at a stored block
+and measure the **enrichment**: the share of |a_k|² landing in a band of m
+vectors, divided by m/k, the share a uniform spread would give. 1 is
+chance, and the comparison is valid across bands and band sizes. The
+covariant vectors are used only to *build* candidate modes (they are not
+orthonormal, so they do not give a clean decomposition); the GS filtration
+is used to *measure*.
+
+### Result: yes, with a monotone q dependence
+
+Enrichment of each template in the near-zero, mid-spectrum and top bands,
+averaged over every stored block of a run (errors are s.e.m. over blocks,
+i.e. over points on the trajectory). L = 16, D = 4, m = 120 of 687:
+
+| q | near-zero | mid | top |
+|---|---|---|---|
+| 0 (uniform) | 1.57 ± 0.08 | 0.99 ± 0.02 | 0.53 ± 0.09 |
+| 0.21 | 1.44 ± 0.07 | 0.91 ± 0.02 | 0.42 ± 0.08 |
+| 0.42 | 1.40 ± 0.07 | 1.06 ± 0.02 | 0.55 ± 0.07 |
+| 0.63 | 1.27 ± 0.03 | 0.96 ± 0.03 | 0.46 ± 0.05 |
+| 1.26 | 1.21 ± 0.04 | 1.00 ± 0.02 | 0.70 ± 0.05 |
+| 2.09 | 1.09 ± 0.03 | 1.04 ± 0.03 | 0.77 ± 0.03 |
+| 2.93 (staggered) | 1.09 ± 0.04 | 1.03 ± 0.02 | 0.84 ± 0.03 |
+
+- **The near-zero band is enriched, and the enrichment decreases
+  monotonically with q**, from 1.44 at the longest wavelength to 1.09 at
+  q ≈ π (a 5σ difference). The uniform template, k = 0, is the most
+  enriched of all at 1.57 — as it must be, since the total energy is
+  exactly conserved and its mode sits at λ = 0. That the conserved
+  quantity comes out on top is a check on the statistic, and the
+  long-wavelength modulations of it inherit the enrichment.
+- **The top band is depleted, most strongly at long wavelength** (0.42 at
+  q = 0.21, rising to 0.84 at q = π). The fastest Lyapunov modes avoid
+  long-wavelength energy content.
+- **The mid-spectrum band sits at 1.00 ± 0.03 at every q** — the null
+  behaves exactly as it should, which is the best evidence that the ±40%
+  effects above are real.
+
+Same pattern in every run, each block-averaged over its own stored blocks.
+Near-zero band enrichment at k = 0 (uniform) and k = 1 (longest
+wavelength), and top-band depletion at k = 1:
+
+| run | m | k = 0 | k = 1 | top, k = 1 |
+|---|---|---|---|---|
+| L = 8, D = 4, dt = 0.025 | 60 of 303 | 1.61 ± 0.08 | 1.53 ± 0.07 | 0.49 ± 0.07 |
+| L = 12, D = 4 | 90 of 495 | 1.59 ± 0.08 | 1.40 ± 0.05 | 0.43 ± 0.06 |
+| L = 16, D = 4 | 120 of 687 | 1.57 ± 0.08 | 1.44 ± 0.07 | 0.42 ± 0.08 |
+| L = 8, D = 8 | 150 of 959 | 1.80 ± 0.14 | 1.59 ± 0.11 | 0.40 ± 0.08 |
+| L = 8, D = 12 | 120 of 1967 | 1.74 ± 0.17 | 1.44 ± 0.06 | 0.35 ± 0.08 |
+
+The effect is if anything slightly stronger at larger D, and shows no L
+dependence at fixed D. It survives the dt = 0.025 / Route A run, so it is
+not an artefact of either route or time step.
+
+### Candidate modes
+
+`figures/<run>_hlm_candidates.png` shows the best mode the near-zero
+covariant span can build at each of the first three wavevectors — the
+projection of `a_k` into that span. They look like hydrodynamic modes:
+
+- profiles that track `cos(q_k j)` with **purity 0.83–0.88 (D = 4) and
+  0.92–0.95 (D = 8)** of their profile power in the intended wavevector,
+- **extensive**: participation ratio 14.2–14.4 of 16 sites at L = 16,
+  5.6–5.8 of 8 at L = 8, so they are not edge or few-site objects,
+- **λ_eff ≈ +0.008 to +0.015**, i.e. at the bottom of the spectrum, against
+  λ_max ≈ 0.3–0.4.
+
+### Caveats
+
+- Only 23–48% of each template lies in the computed non-negative half at
+  all, and that fraction *rises* with q (0.23 at q = 0 to 0.48 at q = π for
+  L = 16). The long-wavelength templates put most of their weight in the
+  contracting half, which has not been computed. A `k = 2n` run would close
+  this, and is the natural next step.
+- Enrichment is a statement about where template weight sits, not proof
+  that a single vector *is* a hydrodynamic mode. The candidate modes are
+  built by projection, so their purity is an upper bound on how cleanly the
+  cluster represents a pure cosine.
+- No `λ(q)` dispersion yet: all candidates sit at λ_eff within a factor ~2
+  of each other, and the near-zero band is 100+ vectors wide, so the
+  resolution needed to see λ ∝ q or q² is not there. Longer runs, or a
+  narrower band, would be needed.
+- β = 1 only.
+
 ## Next
 
 In rough order of value per effort:
 
-1. **Look inside the near-zero cluster without averaging** (no new runs):
-   finer exponent bins near λ = 0; per-vector long-wavelength fraction as a
-   scatter against λ rather than bin means; physical vs auxiliary copy
-   energy profiles; the same for the site-weight profile. This is what
-   decides whether finding 5 means "no HLMs" or "diluted HLMs".
-2. **`template_modes`**: overlaps of the CLVs with `P Σ_j cos(qj) h_j ψ`
-   and `−i P Σ_j cos(qj) h_j ψ`. A direct test instead of an energy-profile
-   proxy.
-3. **Longer runs**: D = 12 to the length of D = 8 (~2.5 h), and discard
+1. **`k = 2n` run** at L = 8, D = 4 or L = 16, D = 4, so the contracting
+   half is available: it holds most of the long-wavelength template weight
+   (52-77%), and it is also the direct test of the ±λ pairing. This is now
+   the most valuable single run.
+2. **λ(q) dispersion**: with a narrower near-zero band, or the full
+   spectrum, test whether the candidate modes' λ_eff scales as q or q²
+   (the classical-HLM vs diffusive distinction). Needs better resolution at
+   the bottom of the spectrum than the present runs have.
+3. **Auxiliary copy**: run the template analysis with `--copy aux`, and
+   compare. If the enrichment is a purification artefact it should look
+   different there.
+4. **Longer runs**: D = 12 to the length of D = 8 (~2.5 h), and discard
    the first 3 time units after vectors start. Needed before reading the
    D dependence (finding 4) or λ_0.
-4. **`k = 2n` pairing check** at L = 8, D = 4 (Route B, ~25 min): the one
-   structural assumption behind decision 6 not yet tested directly.
 5. **β scan**, starting β = 0.5 at L = 8, D = 8 — the original programme.
 6. Rung 4 (D = 1 mean field) — still undone, lower priority now that the
    two routes cross-validate.

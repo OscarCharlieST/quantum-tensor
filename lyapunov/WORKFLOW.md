@@ -18,14 +18,15 @@ lyapunov/
   tdvp_lyapunov/                ACTIVE: first scan done (beta = 1)
     README.md                   design, Route B derivation, validation, cost, results, next
     frame.py                    tangent frame at a point; project_to_frame / retract / frame_change
-    stepper.py                  one TDVP step as a map; FD tangent map (Route A, parallel)
-    tangent_generator.py        exact generator and transport (Route B)
+    stepper.py                  one TDVP step as a map: the trajectory
+    tangent_generator.py        exact generator, transport, exponential action
     benettin.py                 forward QR loop + h5 storage; Ginelli backward pass
-    analysis.py                 energy-density profiles of modes, DCT, q-weight by exponent
+    analysis.py                 energy-density profiles of modes, cosine transform
+    hlm.py                      local-temperature templates, spectral enrichment; run_hlm.py driver
     plots.py                    per-run figures;  compare_runs.py  cross-run overlays
     run_lyapunov.py             driver (--route, --n-jobs, --out-dir, --time-only)
-    validate_frame.py, validate_benettin.py, validate_routeB.py
-    runs/                       logs, queue scripts, small h5; big h5 in C:/Users/charl/lyapunov_runs
+    validate_frame.py (rung 1), validate_benettin.py (rungs 2-3)
+    runs/                       logs and queue scripts only; all h5 in C:/Users/charl/lyapunov_runs
     figures/
 ```
 
@@ -166,11 +167,11 @@ Full detail in `tdvp_lyapunov/README.md`; this is the practical summary.
         --out-dir C:/Users/charl/lyapunov_runs
     python lyapunov/tdvp_lyapunov/plots.py C:/Users/charl/lyapunov_runs/L8_D8_beta1.h5 --discard 20 --clv
     python lyapunov/tdvp_lyapunov/compare_runs.py
+    python lyapunov/tdvp_lyapunov/run_hlm.py C:/Users/charl/lyapunov_runs/L16_D4_beta1.h5 --m 120
 
-Validation: `validate_frame.py`, `validate_benettin.py [2|3]`,
-`validate_routeB.py`. Route choice: B (exact generator) for n ≲ 700, A
-(parallel finite differences) above; `--time-only` measures before you
-commit. Big h5 files go outside OneDrive.
+Validation: `validate_frame.py` (frame primitives), `validate_benettin.py
+[2|3]` (full-Hilbert-space and fixed-point limits). `--time-only` measures
+before you commit. Big h5 files go outside OneDrive.
 
 ### Pipeline
 
@@ -179,11 +180,11 @@ commit. Big h5 files go outside OneDrive.
 | 1 | thermofield double at β, then 160 plain TDVP steps under `H_sym` | `build_uniform_thermofield`, `stepper.tdvp_step` |
 | 2 | frame at the current point (one canonicalization pass) | `frame.Frame` |
 | 3 | one TDVP step; frame at the new point | `tdvp_step`, `Frame` |
-| 4a | Route A: FD tangent map on k columns, parallel | `stepper.tangent_map` |
-| 4b | Route B: generator `H_tan + conj∘K`, polar-factor transport, `expm` | `tangent_generator.*` |
+| 4 | generator `H_tan + conj∘K`, polar-factor transport, exponential action | `tangent_generator.*` |
 | 5 | QR, log diag R, store R / Q / frame | `benettin.benettin` |
 | 6 | Ginelli backward pass → covariant vectors | `benettin.ginelli_backward` |
-| 7 | energy profiles, DCT, exponent-binned q weights; figures | `analysis.*`, `plots.py`, `compare_runs.py` |
+| 7 | energy profiles, cosine transforms; figures | `analysis.*`, `plots.py`, `compare_runs.py` |
+| 8 | template modes, spectral enrichment, candidate HLMs | `hlm.*`, `run_hlm.py` |
 
 ### Results of the first scan (β = 1)
 
@@ -199,11 +200,22 @@ negative exponent in any half spectrum).
   bulk and near-zero end reliable. Two runs (L = 12, D = 12) still drifting.
 - **Strong, non-monotone D dependence** (D = 8 above D = 12), not yet
   trustworthy because the D = 12 run was short.
-- **No HLM signature yet.** Fast covariant vectors are short-wavelength
-  (q ≈ π); as λ → 0 the long-wavelength fraction rises only to the
-  flat-spectrum value, never clearly above it. The near-zero cluster
-  (100–400 vectors) needs to be looked at without averaging before this
-  reads as a negative result.
+- **Hydrodynamic signature found (2026-09-17), by the template statistic.**
+  The bin-averaged long-wavelength fraction showed nothing (it averages
+  over the whole 100-400-vector near-zero cluster). Asking instead where
+  the long-wavelength *template* sits does: the local-temperature mode
+  a_k = 2 realify(P sum_j cos(q_k j) h_j |psi>) is enriched 1.4-1.8x in
+  the near-zero band, depleted to 0.35-0.5 in the top band, with the
+  mid-spectrum band at 1.00 (chance) at every q. Enrichment decreases
+  monotonically with q, and the conserved uniform template (k=0) is the
+  most enriched of all. Same in all five runs. Candidate modes built in
+  the near-zero covariant span track cos(q_k j) with purity 0.83-0.95 and
+  spread over most of the chain, at lambda_eff ~ +0.01.
+  Run with `run_hlm.py`; figures `<run>_hlm_{enrichment,candidates}.png`.
+  The superseded bin-averaged diagnostic was removed on 2026-09-17.
+  **Caveat**: 52-77% of each long-wavelength template lives in the
+  *contracting* half of the spectrum, which has not been computed - a
+  k = 2n run is the obvious next step.
 
 ### Things learned the hard way
 
@@ -228,3 +240,20 @@ negative exponent in any half spectrum).
   only recoverable because `R` happened to be written each block.
 - **Killing a queue's bash process on Windows leaves its running Python
   child alive** (tested) — safe way to replace a queue mid-run.
+- **Never form a matrix exponential you only need to apply.** `scipy.expm`
+  on the 3934x3934 generator took 176 s; the scaled Taylor *action* on the
+  same matrix takes 4.6 s for the same 1e-15 accuracy, and it is a quarter
+  the flops per term because Q has n columns, not 2n. This was 88% of
+  Route B's cost.
+- **Scale the Taylor series by the 2-norm, not the 1-norm.** For these
+  generators the 1-norm is 5x larger (163 vs 33), and the substep count is
+  linear in it.
+- **`pip install cupy` upgraded numpy to 2.x and broke numba/contourpy**
+  (and would have broken `np.product` in `updatemethod`). Pin numpy 1.26.4
+  and use `cupy-cuda12x==13.6.0`; CuPy 14 requires numpy >= 2. On Windows
+  its CUDA DLLs need registering before `import cupy` (see `gpu.py`).
+- **A consumer GPU is useless for this**: float64 is 1/64 of float32 on a
+  4060, measured 1.1x versus the CPU. CuPy and `gpu.py` were removed again
+  on 2026-09-17; the README keeps the Windows DLL notes in case it returns.
+- **Route A (finite differences) was removed on 2026-09-17** after it had
+  served as the independent check on the generator. `git log` has it.

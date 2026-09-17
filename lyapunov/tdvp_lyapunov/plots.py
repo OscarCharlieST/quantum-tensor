@@ -2,11 +2,13 @@
 Eyeball diagnostics for a Lyapunov run. Pure consumers of a benettin()
 result / h5 file and of analysis.mode_report.
 
-    python lyapunov/tdvp_lyapunov/plots.py runs/L8_D4_beta1.h5 [--modes 0 5 -1] [--show]
+    python lyapunov/tdvp_lyapunov/plots.py C:/Users/charl/lyapunov_runs/L8_D8_beta1.h5 \
+        [--modes 0 1 -1] [--discard 20] [--clv] [--show]
 
-writes figures/<run>_{spectrum,convergence}.png and one
-figures/<run>_mode{i}.png per requested Gram-Schmidt vector (from the last
-stored Q). Negative mode indices count from the bottom of the stored half.
+writes figures/<run>_{spectrum,convergence}.png, plus one
+figures/<run>_{mode,clv}{i}.png per requested vector — Gram-Schmidt by
+default, covariant with --clv. Negative indices count from the bottom of
+the stored half. For the hydrodynamic-mode diagnostics see run_hlm.py.
 """
 
 import argparse
@@ -21,7 +23,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.getcwd())
 
 from lyapunov.tdvp_lyapunov.benettin import running_exponents, load_frame, ginelli_backward
-from lyapunov.tdvp_lyapunov.analysis import mode_report, pairing_residual, q_weight_by_exponent
+from lyapunov.tdvp_lyapunov.analysis import mode_report, pairing_residual
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIGS = os.path.join(HERE, 'figures')
@@ -143,45 +145,6 @@ def plot_mode(report, label='', exponent=None, axes=None):
     return axes[0].figure
 
 
-def plot_q_weight(edges, q, W, counts, label='', n_low=2, axes=None):
-    """
-    Left: mean normalized DCT power of the energy profile, exponent bin vs
-    wavevector (single-hue sequential map). Right: the fraction of that
-    power in the n_low longest wavelengths, per bin, with bin counts. A
-    hydrodynamic band is a rise of the right-hand curve as lambda -> 0.
-    """
-    if axes is None:
-        _, axes = plt.subplots(1, 2, figsize=(10, 3.6), gridspec_kw={'width_ratios': [1.3, 1]})
-    a0, a1 = axes
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    im = a0.imshow(W, aspect='auto', origin='lower', cmap='Blues', vmin=0,
-                   extent=[q[0] - 0.5 * (q[1] - q[0]), q[-1] + 0.5 * (q[1] - q[0]), edges[0], edges[-1]])
-    a0.set_xlabel('q')
-    a0.set_ylabel(r'$\lambda$')
-    a0.set_xticks([0, np.pi / 2, np.pi])
-    a0.set_xticklabels(['0', r'$\pi/2$', r'$\pi$'])
-    a0.set_title('energy-profile power by wavevector', loc='left')
-    a0.grid(False)
-    a0.figure.colorbar(im, ax=a0, label='mean fraction')
-
-    low = W[:, :n_low].sum(1)
-    ok = counts > 0
-    a1.plot(centers[ok], low[ok], 'o-', ms=4, color=BLUE)
-    a1.axhline(n_low / len(q), color=MUTED, lw=0.8, ls='--')
-    a1.annotate('uniform', (centers[ok][-1], n_low / len(q)), xytext=(0, 4),
-                textcoords='offset points', color=MUTED, ha='right', fontsize=8)
-    for c, l, k in zip(centers[ok], low[ok], counts[ok]):
-        a1.annotate(str(k), (c, l), xytext=(0, 5), textcoords='offset points',
-                    ha='center', fontsize=7, color=MUTED)
-    a1.set_xlabel(r'$\lambda$')
-    a1.set_ylabel(f'fraction in {n_low} longest wavelengths')
-    a1.set_title('long-wavelength fraction (bin counts)', loc='left')
-    if label:
-        a0.figure.suptitle(label, x=0.01, ha='left')
-    a0.figure.tight_layout()
-    return a0.figure
-
-
 # ----------------------------------------------------------------- from h5
 
 def load_run(path):
@@ -241,10 +204,6 @@ def plot_run(path, modes=(0, -1), which='phys', show=False, discard=0, clv=False
             V = f['Q'][str(block)][()]
             frame = load_frame(f['frame'][str(block)])
         kind = 'GS vector'
-
-    edges, q, W, counts = q_weight_by_exponent(frame, V, lam, which=which)
-    fig = plot_q_weight(edges, q, W, counts, label=f'{name}  {kind}s at block {block}')
-    fig.savefig(os.path.join(FIGS, f'{name}_qweight{"_clv" if clv else ""}.png'), dpi=150)
 
     # columns are in QR order, i.e. sorted by exponent
     for i in modes:
