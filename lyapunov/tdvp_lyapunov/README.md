@@ -311,8 +311,17 @@ free:
    built first, used for the cross-check, and removed on 2026-09-17 once
    the generator was both validated against it (one-step map to `O(dt³)`,
    full spectrum to ~0.005) and faster at every size (see "Cost").
-3. **Uniform β ≈ 1 thermofield double** as the starting state; β to be
-   lowered later. Target regime D = 4–12, L = 8–16; develop at the bottom.
+3. **β = 0.1 is the standing default** (2026-09-17; was β ≈ 1 for the first
+   scan). Hydrodynamics is a high-temperature expectation, so low
+   temperature is the wrong place to hunt for it. The temperature scan
+   below also shows β = 0.1 is *better* conditioned (`s_min` 0.21 vs 0.096,
+   pairing residual five times smaller) and already saturated — β = 0.01
+   buys nothing. `run_lyapunov.py` and `run_template.py` default to it.
+   **Known tension, kept in view:** the *q-selectivity* of the template
+   enrichment was a β = 1 feature and is nearly flat at β ≤ 0.1 (finding 4
+   of the temperature scan), on L = 8, which resolves only 7 wavevectors.
+   Any q-resolved result taken at the new default needs L = 16 before it is
+   leaned on. Target regime D = 4–12, L = 8–16; develop at the bottom.
 4. **Lanczos integrator**, after fixing it (see below); `exact_method()`
    for the smallest validation cases only.
 5. **Ginelli from the start**: every `R` and periodic `Q` + frame are stored.
@@ -415,8 +424,22 @@ All in this folder; run from the repo root.
   --discard 20 --clv --modes 0 1 -1` writes `figures/`.
 - `compare_runs.py` — overlay figures across runs over a common time
   window: `figures/compare_{L_scan,D_scan,dt_route}.png`.
-- `run_lyapunov.py` — driver: `--route A|B`, `--n-jobs`, `--out-dir`;
-  `--time-only` measures a step and prints a cost estimate.
+- `run_lyapunov.py` — spectrum driver: `--L --D --beta --k --blocks
+  --transient --out-dir`; `--time-only` measures a step and prints a cost
+  estimate. `--beta` defaults to 0.1.
+- `run_template.py` — the cheap alternative to a spectrum: seed the tangent
+  flow with a *single* local-temperature template `a_q` (`--kmode`) and
+  watch it, `k = 1`. At `k = 1` the exponential action costs nothing, so
+  the price is the generator plus transport, which are `k`-independent —
+  minutes rather than hours. No QR holds the vector off the leading
+  direction, so it aligns with the top exponent at rate `λ_max − λ`; the
+  three panels of `figures/<run>.png` are there to measure how long the
+  usable window is (growth rate vs `λ_max`, the profile against `cos(qj)`,
+  and the leakage out of the seeded `q`-family). This is the linearized
+  analogue of the nonlinear transport measurement in `qtensor.visualise`
+  (`near_thermal` → profiles → Gaussian widths → `D`): same perturbation,
+  differentiated once about the trajectory, so diffusion appears as
+  `λ(q) ∝ −q²` rather than as `σ² ∝ 2Dt`.
 - `runs/queue2.sh` — the queue that produced the 2026-09-16 scan, with its
   timestamped log `runs/queue2.log`.
 - `validate_frame.py` (rung 1: frame primitives, retraction order, gauge
@@ -900,6 +923,39 @@ Individual vectors inside a near-degenerate cluster are numerically
 arbitrary, which is fine for a statistic pooled over the whole spectrum but
 not for reading any one vector.
 
+> **Flagged 2026-09-17, not yet resolved: the `q_bar` estimator is biased,
+> and this conclusion may be an artefact of it.** Calibrating
+> `phase_free_power` + `spectral_moments` on profiles of *known* wavevector
+> at 15 bonds gives:
+>
+> | true q | 0.209 | 0.419 | 0.628 | 1.047 | 1.885 | 2.932 | random |
+> |---|---|---|---|---|---|---|---|
+> | `q_bar` returned | 0.385 | 0.429 | 0.784 | 1.167 | 1.970 | 2.949 | ~1.45 |
+> | `sd` returned | 0.49 | 0.40 | 0.45 | 0.39 | 0.30 | 0.13 | ~0.9 |
+>
+> Two consequences. **(i)** The two longest wavelengths — exactly where a
+> diffusive `lambda ~ q^2` would have to be tested — are compressed into a
+> band 11% wide, so the low-q end of the dispersion plot has almost no
+> resolution and any curvature there would be flattened into the line.
+> **(ii)** A structureless profile returns `q_bar ~ 1.45`, which is where
+> the fitted crossing `q0 = 1.4 +- 0.1` sits, and the observed median `sd`
+> of 0.83 is in the random range. So "q0" may be measuring where a vector
+> with no wavevector lands rather than a physical scale — which would also
+> explain why it is the same at every L and beta (finding 2 of "Next").
+>
+> Cause: the `{cos, sin}` family is evaluated on a 201-point grid inside a
+> 14-dimensional profile space, so it is ~30x overcomplete — a unit profile
+> has total power 32.6 summed over the grid. It is a smoothed, overlap-
+> weighted scan, not a decomposition, and the centroid of a smoothed scan is
+> pulled towards the middle of the zone. The DCT does not have this problem
+> (it is orthonormal, and gives 0.978 purity on the same k=1 template that
+> `phase_free_power` calls `q_bar = 0.478, sd = 0.65`), but it has no phase
+> freedom, which is why it was replaced. A correct phase-free estimator
+> needs an orthonormal basis, not an overcomplete scan.
+>
+> Nothing above has been rerun; the linear fit and the claim of no
+> diffusive branch should be treated as unverified until it is.
+
 ## Next
 
 1. **Why linear?** The dispersion `lambda ~ A(q - q0)` is the open
@@ -908,7 +964,11 @@ not for reading any one vector.
    `C(t) = sum_i w_i(q) exp(lambda_i t)`, whose long-time behaviour is set
    by the slowest weighted modes. That is also the estimator a diffusive
    rate would actually live in, so it is worth building before concluding
-   there is no diffusion anywhere in this system.
+   there is no diffusion anywhere in this system. **In progress via
+   `run_template.py`**: seeding the flow with `a_q` and watching
+   `‖δψ(t)‖` measures that decay directly, without the spectrum. The
+   expected failure mode is alignment with the top direction — the run is
+   designed to measure when that happens, not to avoid it.
 2. **What sets q0 = 1.4?** It is the same (to ~0.1) at L = 8 and 16 and at
    beta = 1 and 0.01, so it is not a finite-size or temperature scale. A
    D scan would say whether it is set by the bond dimension -- i.e. by how
@@ -918,9 +978,11 @@ not for reading any one vector.
    physical and auxiliary energies are separately conserved by the exact
    dynamics but not by the manifold flow, so comparing them isolates what
    the purification is doing.
-4. **L = 16, D = 6, beta = 0.01, k = 2n** (requested, not started): ~4 h,
+4. **L = 16, D = 6, beta = 0.1, k = 2n** (requested, not started): ~4 h,
    ~10 GB. Would test the high-temperature loss of q-selectivity and the
-   D-dependence of q0 at the best available wavevector resolution.
+   D-dependence of q0 at the best available wavevector resolution. Retuned
+   from beta = 0.01 to the new default; the scan showed 0.1 and 0.01 give
+   the same spectrum, so there is no reason to pay for the colder one.
 5. **Longer D = 12 run**, before reading the D dependence of the spectrum
    (finding 4) or lambda_0.
 6. Rung 4 (D = 1 mean field) — still undone, low priority now that the

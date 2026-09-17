@@ -4,8 +4,11 @@ double, with everything Ginelli needs stored to h5.
 
 Run from the repo root, e.g.
 
-    python lyapunov/tdvp_lyapunov/run_lyapunov.py --L 8 --D 4 --beta 1 \
+    python lyapunov/tdvp_lyapunov/run_lyapunov.py --L 8 --D 4 --beta 0.1 \
         --dt 0.05 --blocks 200 --transient 160 --out-dir C:/Users/charl/lyapunov_runs
+
+beta defaults to 0.1: hydrodynamics is a high-temperature expectation, and
+the spectrum is better conditioned there (see the README temperature scan).
 
 Output: runs/L{L}_D{D}_beta{beta}_{tag}.h5 next to this script. The
 default k is n (the non-negative half of the spectrum); pass --k for
@@ -40,7 +43,9 @@ def parse():
     p = argparse.ArgumentParser()
     p.add_argument('--L', type=int, default=8)
     p.add_argument('--D', type=int, default=4)
-    p.add_argument('--beta', type=float, default=1.0)
+    p.add_argument('--beta', type=float, default=0.1,
+                   help='inverse temperature; the default is the standing '
+                        'convention, see the README')
     p.add_argument('--imag-steps', type=int, default=60)
     p.add_argument('--seed', type=int, default=0, help='rank-seeding noise RNG seed')
     p.add_argument('--dt', type=float, default=0.05)
