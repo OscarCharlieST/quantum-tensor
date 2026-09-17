@@ -38,10 +38,18 @@ from lyapunov.tdvp_lyapunov.analysis import cosine_transform
 from lyapunov.tdvp_lyapunov.frame import complexify
 from lyapunov.tdvp_lyapunov.hlm import (
     template_vectors, template_spectral_weights, band_enrichment,
-    subspace_projector_fraction, band_indices, profile_map,
+    subspace_projector_fraction, band_indices, profile_map, pairing_structure,
 )
 
-BANDS = [('near-zero', 'zero', BLUE), ('mid-spectrum', 'mid', ORANGE), ('top', 'top', AQUA)]
+# Bands compared against the templates. A k = n run only has the
+# non-negative half; a k = 2n run splits the near-zero cluster by sign, so
+# that the contracting modes -- where most of the long-wavelength template
+# weight turned out to live -- can be looked at in their own right.
+BANDS_HALF = [('near-zero', 'zero', BLUE), ('mid-spectrum', 'mid', ORANGE),
+              ('top', 'top', AQUA)]
+BANDS_FULL = [('near-zero +', 'zero+', BLUE), ('near-zero -', 'zero-', '#4a3aa7'),
+              ('mid +', 'mid+', ORANGE), ('mid -', 'mid-', '#eda100'),
+              ('top', 'top', AQUA), ('bottom', 'bottom', '#e34948')]
 
 
 def describe_mode(frame, vec, which='phys'):
@@ -87,9 +95,9 @@ def plot_candidates(cands, bonds, label=''):
     return fig
 
 
-def plot_enrichment(q, enrich, err, in_half, cum, lam, m, n_blocks, label=''):
+def plot_enrichment(q, enrich, err, in_half, cum, lam, m, n_blocks, bands, label=''):
     fig, ax = plt.subplots(1, 3, figsize=(13, 3.6))
-    for (name, key, color) in BANDS:
+    for (name, key, color) in bands:
         ax[0].errorbar(q, enrich[key], yerr=err[key], fmt='o-', ms=4, lw=1.5,
                        capsize=2, color=color, label=f'{name} (m={m})')
     ax[0].axhline(1.0, color=MUTED, ls='--', lw=1)
@@ -104,11 +112,11 @@ def plot_enrichment(q, enrich, err, in_half, cum, lam, m, n_blocks, label=''):
 
     ax[1].plot(q, in_half, 'o-', ms=4, color=BLUE)
     ax[1].set_xlabel('q of template')
-    ax[1].set_ylabel('fraction in computed half')
-    ax[1].set_ylim(0, 1)
+    ax[1].set_ylabel('fraction in computed space')
+    ax[1].set_ylim(0, 1.05)
     ax[1].set_xticks([0, np.pi / 2, np.pi])
     ax[1].set_xticklabels(['0', r'$\pi/2$', r'$\pi$'])
-    ax[1].set_title('weight in non-negative half', loc='left')
+    ax[1].set_title('weight in computed space', loc='left')
 
     lam_sorted = np.sort(lam)[::-1]
     for color, (k, c) in zip([BLUE, ORANGE, AQUA], cum.items()):
@@ -148,6 +156,14 @@ def main():
 
     n_bonds = len(frame.sites) - 1
     q, templates = template_vectors(frame, n_bonds - 1, a.copy)
+    full = run['k'] == 2 * run['n']
+    BANDS = BANDS_FULL if full else BANDS_HALF
+    print(f"  {'full' if full else 'non-negative half'} spectrum: "
+          f"k = {run['k']}, 2n = {2 * run['n']}")
+    if full:
+        pair = np.sort(lam)[::-1] + np.sort(lam)
+        print(f"  +/- pairing: max |lambda_i + lambda_(2n+1-i)| = {np.abs(pair).max():.4f} "
+              f"({np.abs(pair).max() / np.abs(lam).max():.1%} of lambda_max)")
     bands = {key: band_indices(lam, key, m=a.m) for _, key, _ in BANDS}
     for nm, key, _ in BANDS:
         print(f"  {nm:12s} band: lambda in "
@@ -182,35 +198,45 @@ def main():
     print(f"  enrichment averaged over {len(blocks)} stored blocks "
           f"(error = s.e.m. over blocks)")
 
-    print(f"\n  {'k':>2s} {'q':>6s} {'in half':>8s} " +
+    label_in = 'in space' if full else 'in half'
+    print(f"\n  {'k':>2s} {'q':>6s} {label_in:>9s} " +
           "".join(f"{nm:>16s}" for nm, _, _ in BANDS))
     for k in range(len(templates)):
-        print(f"  {k:2d} {q[k]:6.2f} {in_half[k]:8.3f} " +
+        print(f"  {k:2d} {q[k]:6.2f} {in_half[k]:9.3f} " +
               "".join(f"{enrich[key][k]:11.2f}+-{err[key][k]:.2f}" for _, key, _ in BANDS))
 
-    # candidate modes: built in the covariant span of the near-zero cluster
     t0 = clock.time()
     out = ginelli_backward(a.path, [block], discard_last=run['done'] - 1 - block)
     V = out['clv'][block]
     print(f"\n  Ginelli backward pass: {clock.time() - t0:.0f} s")
-    cands = []
-    for k in range(1, a.kmax + 1):
-        _, y, proj = subspace_projector_fraction(V[:, bands['zero']], templates[k])
-        d = describe_mode(frame, proj / la.norm(proj), a.copy)
-        d.update({'k': k, 'enrichment': enrich['zero'][k],
-                  'purity': d['dct'][k] ** 2 / np.sum(d['dct'] ** 2),
-                  'lambda_eff': float(lam[bands['zero']] @ (y ** 2) / np.sum(y ** 2))})
-        cands.append(d)
+    if full:
+        frac, n_pairs = pairing_structure(V, lam)
+        print(f"  symplectic Gram: {frac:.3f} of |omega|^2 sits on the {n_pairs} "
+              f"conjugate pairs (1 = exact)")
 
     os.makedirs(FIGS, exist_ok=True)
     lab = f'{name}  m={a.m} per band, {a.copy} copy, block {block}'
     fig = plot_enrichment(q, enrich, err, np.array(in_half), cum, lam, a.m,
-                          len(blocks), lab)
+                          len(blocks), BANDS, lab)
     fig.savefig(os.path.join(FIGS, f'{name}_hlm_enrichment.png'), dpi=150)
-    fig = plot_candidates(cands, np.array(frame.sites[:-1]),
-                          lab + '  — best near-zero mode per wavevector')
-    fig.savefig(os.path.join(FIGS, f'{name}_hlm_candidates.png'), dpi=150)
-    print(f"  written figures/{name}_hlm_{{enrichment,candidates}}.png")
+
+    # Candidate modes, built in the covariant span of each near-zero band.
+    # With the full spectrum there are two: the expanding and contracting
+    # sides of zero, symplectically conjugate to each other but not equal.
+    sides = [('zero+', '+', ''), ('zero-', '-', '_neg')] if full else [('zero', '', '')]
+    for key, sign, suffix in sides:
+        cands = []
+        for k in range(1, a.kmax + 1):
+            _, y, proj = subspace_projector_fraction(V[:, bands[key]], templates[k])
+            d = describe_mode(frame, proj / la.norm(proj), a.copy)
+            d.update({'k': k, 'enrichment': enrich[key][k],
+                      'purity': d['dct'][k] ** 2 / np.sum(d['dct'] ** 2),
+                      'lambda_eff': float(lam[bands[key]] @ (y ** 2) / np.sum(y ** 2))})
+            cands.append(d)
+        fig = plot_candidates(cands, np.array(frame.sites[:-1]),
+                              f'{lab}  — best near-zero{sign} mode per wavevector')
+        fig.savefig(os.path.join(FIGS, f'{name}_hlm_candidates{suffix}.png'), dpi=150)
+    print(f"  written figures/{name}_hlm_{{enrichment,candidates*}}.png")
     if a.show:
         plt.show()
 

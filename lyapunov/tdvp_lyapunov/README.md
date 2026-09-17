@@ -6,9 +6,12 @@ generator ("Route B"), cross-validated against a finite-difference
 implementation that has since been removed. Six runs cover L = 8, 12, 16 at D = 4 and D = 4, 8, 12 at
 L = 8, with covariant Lyapunov vectors. Headline: the half spectrum is
 extensive per tangent dimension and route/dt-independent; the
-long-wavelength energy-density template is enriched ~1.4-1.8x in the
-near-zero cluster and depleted ~0.4x at the top, with a monotone
-wavevector dependence. See "Results" and "Hydrodynamic modes".
+local-temperature template at long wavelength sits on the *contracting*
+directions (enrichment 1.7x) and avoids the expanding ones (0.44x), while
+its symplectic partner, the local time-shift template, does the reverse;
+the effect dies monotonically with wavevector. See "Results",
+"Hydrodynamic modes" and, for the correction that the full spectrum
+forced, "Full spectrum (k = 2n)".
 
 See [`../README.md`](../README.md) for shared background and for the
 argument that forces the exponents at the `H_asym` fixed point to be exactly
@@ -590,6 +593,11 @@ End-to-end validation of the pipeline is finding 1 together with
 
 ## Hydrodynamic modes: the template analysis (2026-09-17)
 
+> **Read with the next section.** Everything here is computed on the
+> non-negative half of the spectrum, and its central claim — enrichment in
+> the near-zero cluster — does not survive the k = 2n run. The method and
+> the template construction do; the interpretation is corrected below.
+
 Finding 5 above (bin-averaged long-wavelength fraction) asked whether a
 *typical* vector in an exponent band is long-wavelength, and found nothing
 above chance. That statistic is diluted by construction: it averages over
@@ -695,27 +703,116 @@ projection of `a_k` into that span. They look like hydrodynamic modes:
   narrower band, would be needed.
 - β = 1 only.
 
+### Full spectrum (k = 2n, 2026-09-17): the correction
+
+`L16_D4_beta1_k2n` — L = 16, D = 4, k = 2n = 1374, 250 blocks, 39 min,
+2.1 GB. This run has both halves, and it **changes the reading of the
+previous section**.
+
+**Why the negative half is not derivable from the positive half.** The flow
+is Hamiltonian, so the tangent map preserves ω and
+`ω(E^λ, E^μ) = 0 unless λ + μ = 0`: ω is constant along the flow while the
+pair's norms grow as `e^{(λ+μ)t}`, so the form must vanish unless the
+exponents cancel. Each contracting direction is therefore the symplectic
+conjugate of exactly one expanding direction. But the expanding half spans
+a *Lagrangian* subspace (ω vanishes identically on it), and a Lagrangian
+subspace does not determine a complement — there is an infinite family. The
+contracting vectors carry genuinely new information.
+
+**Spectrum-level pairing holds.** `Σλ = −0.139`, which is 0.14% of `Σ|λ|`;
+the residual `λ_i + λ_{2n+1−i}` has rms 0.0014 and max 0.015 (5% of
+λ_max). The mean level spacing is 4.3e-4, so the pairing is good to a few
+level spacings — as expected from a finite averaging time.
+
+**Vector-level conjugacy is not resolvable here, by two independent
+limits.** The spectrum is dense (1374 exponents in [−0.29, +0.30]), so
+individual Oseledets directions are near-degenerate and numerically
+arbitrary within a cluster; and the Ginelli backward pass loses column
+independence at this size (the CLV matrix has condition number 2e17,
+against a well-conditioned ~1e1 for a 120-vector band). So the symplectic
+Gram concentrates only 0.067 of `|ω|²` on conjugate pairs against 0.044 for
+chance. **Consequence for analysis: measure with the Gram–Schmidt basis,
+which is exactly orthonormal; use covariant vectors only inside narrow
+bands.**
+
+**The corrected result.** Enrichment of the local-temperature template,
+averaged over 11 blocks, m = 120 of 1374:
+
+| q | near-zero + | near-zero − | mid + | mid − | top | bottom |
+|---|---|---|---|---|---|---|
+| 0 (uniform) | 0.77 | 1.01 | 0.66 | 1.31 | **0.44** | **1.69** |
+| 0.21 | 1.12 | 1.04 | 0.66 | 1.11 | **0.44** | **1.40** |
+| 0.42 | 0.80 | 1.10 | 0.80 | 1.17 | **0.44** | **1.63** |
+| 0.63 | 0.88 | 1.13 | 0.80 | 1.15 | 0.59 | 1.57 |
+| 1.88 | 0.95 | 1.08 | 0.95 | 1.09 | 0.68 | 1.14 |
+| 2.93 | 1.00 | 1.09 | 1.02 | 1.02 | 0.81 | 0.97 |
+
+- **The long-wavelength temperature template lives on the *contracting*
+  directions**, not on the near-zero ones: bottom band 1.69 at q = 0
+  falling monotonically to ~1.0 at q = π, top band 0.44 rising to 0.81.
+  Both near-zero bands sit at chance (0.8–1.13).
+- **The near-zero enrichment reported in the previous section was an
+  artefact of conditioning on the positive half.** Within that half the
+  weight is depleted at the top, which — normalized to the half — reads as
+  enrichment near zero. The real signal was always the top-band depletion.
+- **Also retracted:** that section read the k = 0 template as "the
+  conserved total energy, which must sit at λ = 0, so the statistic passes
+  its check". Wrong: the template is the *physical-copy* energy `H⊗I`,
+  while the flow conserves `⟨H_sym⟩`. `⟨H⊗I⟩` is conserved by the exact
+  dynamics but not by the manifold flow, so it is under no obligation to
+  sit at zero — and it does not.
+
+**The asymmetry is the symplectic structure, not a basis artefact.** The
+Gram–Schmidt basis is the forward Oseledets filtration and so is not
+time-symmetric, which could in principle manufacture a top/bottom
+asymmetry. The test: `J a_k`, the symplectic partner of the temperature
+template, is precisely the **local time-shift** template `−i P Σ_j cos(q_k j) h_j ψ`
+of the design plan. Its enrichment mirrors:
+
+| template | top | bottom |
+|---|---|---|
+| local temperature `a_k` (q=0) | 0.44 | 1.69 |
+| local time shift `J a_k` (q=0) | **1.70** | **0.37** |
+
+So the two conjugate perturbations split cleanly between the two halves of
+the spectrum: **a local temperature perturbation projects onto decaying
+directions, its conjugate phase/time-shift perturbation onto growing ones**,
+and the split is strongest at long wavelength, weakening monotonically to
+nothing at q = π. That is a relaxation statement with a wavevector
+dependence, which is the object to take to a diffusive-scaling test.
+
+**Candidate modes, contracting side** (`figures/L16_D4_beta1_k2n_hlm_candidates_neg.png`,
+against `_candidates.png` for the expanding side). The near-zero− band
+gives *cleaner* modes than the near-zero+ band: purity 0.92–0.94 against
+0.83–0.88, extent 14.1–14.4 of 16 sites, λ_eff ≈ −0.0088 at every q. Their
+profiles track `cos(q_k j)` closely.
+
 ## Next
 
-In rough order of value per effort:
-
-1. **`k = 2n` run** at L = 8, D = 4 or L = 16, D = 4, so the contracting
-   half is available: it holds most of the long-wavelength template weight
-   (52-77%), and it is also the direct test of the ±λ pairing. This is now
-   the most valuable single run.
-2. **λ(q) dispersion**: with a narrower near-zero band, or the full
-   spectrum, test whether the candidate modes' λ_eff scales as q or q²
-   (the classical-HLM vs diffusive distinction). Needs better resolution at
-   the bottom of the spectrum than the present runs have.
-3. **Auxiliary copy**: run the template analysis with `--copy aux`, and
-   compare. If the enrichment is a purification artefact it should look
-   different there.
-4. **Longer runs**: D = 12 to the length of D = 8 (~2.5 h), and discard
-   the first 3 time units after vectors start. Needed before reading the
-   D dependence (finding 4) or λ_0.
+1. **Diffusive scaling of the split** (the current line of interest). The
+   temperature/time-shift asymmetry is now a q-resolved number: define a
+   rate from it — e.g. the band-weighted `λ` of the temperature template,
+   `Σ_i w_i(q) λ_i`, which is a genuine decay rate of that perturbation —
+   and test whether it scales as `q²`. This uses the stored runs; no new
+   simulation is needed for L = 16, D = 4.
+2. **The same at other L and D**, to see whether the rate's `q²`
+   coefficient behaves like a diffusion constant. The other five runs are
+   k = n, so they measure the split only through the top-band depletion;
+   a second k = 2n run (L = 8, D = 8, ~1 h) would give a clean D
+   comparison.
+3. **Auxiliary copy**: rerun the template analysis with `--copy aux`. The
+   physical and auxiliary energies are separately conserved by the exact
+   dynamics but not by the manifold flow, so comparing them isolates what
+   the purification is doing.
+4. **Longer D = 12 run**, before reading the D dependence of the spectrum
+   (finding 4) or λ_0.
 5. **β scan**, starting β = 0.5 at L = 8, D = 8 — the original programme.
-6. Rung 4 (D = 1 mean field) — still undone, lower priority now that the
-   two routes cross-validate.
+6. Rung 4 (D = 1 mean field) — still undone, low priority now that the
+   generator is validated three other ways.
+
+Not worth pursuing without a fix: covariant vectors over the *full*
+spectrum, where the Ginelli backward pass is ill-conditioned (see the k = 2n
+section). Narrow bands are fine.
 
 ## Open questions carried over
 

@@ -199,16 +199,76 @@ def subspace_projector_fraction(V, a):
 
 def band_indices(lam, centre='zero', m=None, band=None):
     """
-    Indices of a contiguous band of the spectrum: the m smallest |lambda|
-    ('zero'), m around the median ('mid'), the m largest ('top'), or
-    everything with |lambda| < band.
+    Indices of a contiguous band of the spectrum:
+
+      'zero'      the m smallest |lambda|, either sign
+      'zero+'     the m smallest *positive* lambda
+      'zero-'     the m smallest |lambda| among the negative ones
+      'mid'       m around the median
+      'mid+'/'mid-'  m around the median of the positive / negative half
+      'top'       the m largest
+      'bottom'    the m most negative
+
+    or, with `band` given, everything with |lambda| < band.
     """
     if band is not None:
         return np.where(np.abs(lam) < band)[0]
+    lam = np.asarray(lam)
     if centre == 'top':
         order = np.argsort(lam)[::-1]
+    elif centre == 'bottom':
+        order = np.argsort(lam)
+    elif centre in ('zero+', 'zero-', 'mid+', 'mid-'):
+        side = np.where(lam > 0)[0] if centre.endswith('+') else np.where(lam < 0)[0]
+        key = np.abs(lam[side]) if centre.startswith('zero') else \
+            np.abs(lam[side] - np.median(lam[side]))
+        order = side[np.argsort(key)]
     elif centre == 'mid':
         order = np.argsort(np.abs(lam - np.median(lam)))
     else:
         order = np.argsort(np.abs(lam))
+    assert m is not None and m <= len(order), f"band '{centre}' has only {len(order)} vectors"
     return np.sort(order[:m])
+
+
+def symplectic_form(u, v):
+    """
+    omega(u, v) for real frame coordinates y = (Re X, Im X). The frame is
+    orthonormal and Kahler, so omega is the standard form: with
+    X = complexify(y), omega(u, v) = Im <X_u, X_v>.
+    """
+    n = u.shape[0] // 2
+    ur, ui = u[:n], u[n:]
+    vr, vi = v[:n], v[n:]
+    return ur @ vi - ui @ vr
+
+
+def symplectic_gram(V):
+    """
+    omega(v_i, v_j) for the columns of V, as a matrix. For covariant
+    vectors of a Hamiltonian flow this must vanish unless the two exponents
+    sum to zero: omega(E^lambda, E^mu) = 0 for lambda + mu != 0, because
+    omega is conserved while the pair's norms grow as e^{(lambda+mu)t}.
+    So the matrix should be zero except on the anti-diagonal pairing
+    lambda_i with -lambda_i.
+    """
+    n = V.shape[0] // 2
+    J_V = np.vstack([V[n:], -V[:n]])       # J = [[0, I], [-I, 0]] on each column
+    return V.T @ J_V
+
+
+def pairing_structure(V, lam, tol=1e-8):
+    """
+    How well the covariant vectors realize the symplectic pairing: the
+    fraction of |omega|^2 that sits on the pairs (i, j) with
+    |lambda_i + lambda_j| <= tol_lambda, versus everywhere else. 1 means
+    the pairing is exact.
+    """
+    G = np.abs(symplectic_gram(V)) ** 2
+    np.fill_diagonal(G, 0.0)
+    s = np.add.outer(lam, lam)
+    # pair each exponent with its nearest partner in -lam
+    tol_lambda = max(tol, 0.02 * np.abs(lam).max())
+    paired = np.abs(s) <= tol_lambda
+    total = G.sum()
+    return (G[paired].sum() / total if total > 0 else np.nan), paired.sum()

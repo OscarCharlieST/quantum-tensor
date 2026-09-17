@@ -200,22 +200,21 @@ negative exponent in any half spectrum).
   bulk and near-zero end reliable. Two runs (L = 12, D = 12) still drifting.
 - **Strong, non-monotone D dependence** (D = 8 above D = 12), not yet
   trustworthy because the D = 12 run was short.
-- **Hydrodynamic signature found (2026-09-17), by the template statistic.**
-  The bin-averaged long-wavelength fraction showed nothing (it averages
-  over the whole 100-400-vector near-zero cluster). Asking instead where
-  the long-wavelength *template* sits does: the local-temperature mode
-  a_k = 2 realify(P sum_j cos(q_k j) h_j |psi>) is enriched 1.4-1.8x in
-  the near-zero band, depleted to 0.35-0.5 in the top band, with the
-  mid-spectrum band at 1.00 (chance) at every q. Enrichment decreases
-  monotonically with q, and the conserved uniform template (k=0) is the
-  most enriched of all. Same in all five runs. Candidate modes built in
-  the near-zero covariant span track cos(q_k j) with purity 0.83-0.95 and
-  spread over most of the chain, at lambda_eff ~ +0.01.
-  Run with `run_hlm.py`; figures `<run>_hlm_{enrichment,candidates}.png`.
-  The superseded bin-averaged diagnostic was removed on 2026-09-17.
-  **Caveat**: 52-77% of each long-wavelength template lives in the
-  *contracting* half of the spectrum, which has not been computed - a
-  k = 2n run is the obvious next step.
+- **Hydrodynamic signature (2026-09-17), and its correction the same day.**
+  The bin-averaged long-wavelength fraction found nothing (it averages over
+  the whole near-zero cluster). Asking where the long-wavelength *template*
+  sits does find structure: the local-temperature mode
+  a_k = 2 realify(P sum_j cos(q_k j) h_j |psi>), decomposed over the
+  orthonormal Gram-Schmidt basis. On the non-negative half it looked like
+  1.4-1.8x enrichment in the near-zero cluster; **the k = 2n run showed
+  that was an artefact of conditioning on that half.** With both halves:
+  the template sits on the *contracting* directions (1.69x at q = 0,
+  decaying monotonically to ~1 at q = pi) and avoids the expanding ones
+  (0.44x), with the near-zero bands at chance. Its symplectic partner
+  J a_k -- the local time-shift template -- mirrors this exactly (top 1.70,
+  bottom 0.37), which is what confirms the asymmetry is the symplectic
+  structure rather than a bias of the forward-filtration basis.
+  Run with `run_hlm.py`; figures `<run>_hlm_{enrichment,candidates,candidates_neg}.png`.
 
 ### Things learned the hard way
 
@@ -240,6 +239,16 @@ negative exponent in any half spectrum).
   only recoverable because `R` happened to be written each block.
 - **Killing a queue's bash process on Windows leaves its running Python
   child alive** (tested) — safe way to replace a queue mid-run.
+- **Ginelli's backward pass is ill-conditioned over a full spectrum.** At
+  k = 2n = 1374 the covariant vectors come back with condition number 2e17
+  (columns collapsed); inside a 120-vector band they are fine. Measure with
+  the Gram-Schmidt basis, which is exactly orthonormal, and use covariant
+  vectors only within narrow bands.
+- **A dense spectrum defeats vector-level Oseledets statements.** 1374
+  exponents span [-0.29, 0.30], so the level spacing (4e-4) is far below
+  the pairing accuracy (0.015); individual directions inside a cluster are
+  numerically arbitrary. Band-level statements survive, per-vector ones do
+  not.
 - **Never form a matrix exponential you only need to apply.** `scipy.expm`
   on the 3934x3934 generator took 176 s; the scaled Taylor *action* on the
   same matrix takes 4.6 s for the same 1e-15 accuracy, and it is a quarter
