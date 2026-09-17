@@ -475,7 +475,7 @@ def ising_commutator(site, J, g):
     returns it as a single 3-site mpo.
     """
     x, y, z = [pauli(i) for i in ['x', 'y', 'z']]
-    Wl, Wi, Wr = [np.zeros((2, 2, 3, 3), dtype=np.complex128)]*3
+    Wl, Wi, Wr = [np.zeros((2, 2, 3, 3), dtype=np.complex128) for _ in range(3)]
     Wl[:, :, 0, 0] = np.eye(2)
     Wl[:, :, 2, 2] = np.eye(2)
     Wl[:, :, 0, 1] = -2j*J*g * z
