@@ -216,6 +216,22 @@ negative exponent in any half spectrum).
   structure rather than a bias of the forward-filtration basis.
   Run with `run_hlm.py`; figures `<run>_hlm_{enrichment,candidates,candidates_neg}.png`.
 
+### Temperature scan (2026-09-17)
+
+L = 8, D = 8, full spectrum, beta = 1 / 0.1 / 0.01 (`compare_beta.py`).
+
+- **Stable down to beta = 1e-2, and better conditioned there**: s_min rises
+  0.096 -> 0.21, pairing residual improves 0.048 -> 0.009. The nearly
+  rank-1 thermofield double at high temperature does *not* poison the
+  tangent space, because the 160-step real-time transient fills the bond
+  dimension first.
+- **The flow saturates by beta = 0.1**: the 0.1 and 0.01 spectra coincide.
+  No point going hotter at this L and D.
+- **The contracting-band enrichment strengthens** (1.37 -> 1.67 at q1) but
+  **loses its q-dependence**: flat at beta <= 0.1, monotone decay at
+  beta = 1. Scale separation is a beta = 1 feature. Recheck at L = 16
+  before leaning on it.
+
 ### Things learned the hard way
 
 - **`retract` must canonicalize losslessly before truncating.** The block

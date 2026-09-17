@@ -9,9 +9,10 @@ extensive per tangent dimension and route/dt-independent; the
 local-temperature template at long wavelength sits on the *contracting*
 directions (enrichment 1.7x) and avoids the expanding ones (0.44x), while
 its symplectic partner, the local time-shift template, does the reverse;
-the effect dies monotonically with wavevector. See "Results",
-"Hydrodynamic modes" and, for the correction that the full spectrum
-forced, "Full spectrum (k = 2n)".
+the effect dies monotonically with wavevector at β = 1. A β scan down to
+1e-2 shows the machinery is stable (better conditioned, in fact) and the
+split strengthens, but its wavevector selectivity is a β = 1 feature. See
+"Results", "Full spectrum (k = 2n)" and "Temperature scan".
 
 See [`../README.md`](../README.md) for shared background and for the
 argument that forces the exponents at the `H_asym` fixed point to be exactly
@@ -787,6 +788,62 @@ gives *cleaner* modes than the near-zero+ band: purity 0.92–0.94 against
 0.83–0.88, extent 14.1–14.4 of 16 sites, λ_eff ≈ −0.0088 at every q. Their
 profiles track `cos(q_k j)` closely.
 
+### Temperature scan (2026-09-17): β = 1, 0.1, 0.01 at L = 8, D = 8
+
+Three full-spectrum runs, `L8_D8_beta{1,0.1,0.01}_k2n`, 250 blocks each,
+~52 min each. Figures `compare_beta_{spectra,enrichment,modes}.png`
+(`compare_beta.py`). The question was whether the programme survives down
+to β ≈ 1e-2, where the thermofield double is nearly rank-1.
+
+| β | λ_max | Σλ | pairing residual | s_min | bottom enrich. at q₁ | mode purity | λ_eff | extent |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 0.436 | −0.007 | 0.048 | 9.6e-2 | 1.37 | 0.96 | −0.0140 | 5.9 |
+| 0.1 | 0.533 | −0.010 | 0.0093 | 2.1e-1 | 1.67 | 0.81 | −0.0297 | 5.8 |
+| 0.01 | 0.542 | −0.013 | 0.0112 | 2.1e-1 | 1.66 | 0.90 | −0.0268 | 5.7 |
+
+**1. It is stable, and better conditioned at high temperature — the
+opposite of the worry.** The smallest Schmidt value *rises* from 0.096 at
+β = 1 to 0.21 at β ≤ 0.1, and the ±λ pairing residual improves five-fold
+(0.048 → 0.009). `Σλ` stays within 0.013 of zero. The concern that the
+nearly-rank-1 β = 1e-2 thermofield double would leave the tangent space
+built on numerically null directions does not materialize: the noise
+seeding plus 160 steps of real-time `H_sym` evolution fill the bond
+dimension before the tangent vectors are switched on. **Nothing here
+blocks going to β = 1e-2.**
+
+**2. The flow saturates by β = 0.1.** The β = 0.1 and β = 0.01 spectra lie
+on top of each other over the whole range (λ_max 0.533 vs 0.542), while
+β = 1 is visibly less chaotic (0.436). So the infinite-temperature limit is
+already reached at β = 0.1 for this L and D, and β = 0.01 buys nothing —
+worth knowing before spending runs on even higher temperatures.
+
+**3. The temperature/time-shift split survives and strengthens.** The
+contracting-band enrichment of the local-temperature template at the
+longest wavelength goes 1.37 → 1.67 → 1.66, and the expanding-band
+depletion is ~0.22–0.27 at q = 0 at every β. The effect is not a
+low-temperature artefact.
+
+**4. But the *wavevector selectivity* is a β = 1 feature.** At β = 1 the
+enrichment falls monotonically with q, 1.28 at q = 0 to 0.88 at q = π — long
+wavelengths are singled out. At β ≤ 0.1 it is large but nearly flat,
+1.85 falling only to ~1.5, i.e. **every** wavelength of energy-density
+perturbation aligns with the contracting directions about equally. A
+hydrodynamic mode needs long wavelengths to be *distinguished*; that scale
+separation is present at β = 1 and largely gone at high temperature.
+Caveat: L = 8 resolves only 7 wavevectors, so this should be rechecked at
+L = 16 before being leaned on — the β = 1, L = 16 run does show the clean
+monotone decay.
+
+**5. Candidate modes stay clean at every temperature** (`compare_beta_modes.png`):
+purity 0.81–0.96, extent 5.7–5.9 of 8 sites, profiles tracking
+`cos(q₁ j)`. Their λ_eff roughly doubles with temperature (−0.014 →
+−0.027), tracking the overall speed-up of the flow rather than anything
+specific to the mode.
+
+**Consequence for the diffusive-scaling test:** run it at β = 1, where the
+q-dependence exists, and preferably at L = 16 for wavevector resolution.
+High temperature gives a stronger but scale-free signal.
+
 ## Next
 
 1. **Diffusive scaling of the split** (the current line of interest). The
@@ -806,7 +863,9 @@ profiles track `cos(q_k j)` closely.
    the purification is doing.
 4. **Longer D = 12 run**, before reading the D dependence of the spectrum
    (finding 4) or λ_0.
-5. **β scan**, starting β = 0.5 at L = 8, D = 8 — the original programme.
+5. **β scan** — done for L = 8, D = 8 (see "Temperature scan"). What is
+   left is whether the high-temperature loss of q-selectivity survives at
+   L = 16, which needs one more full-spectrum run (~1.5 h).
 6. Rung 4 (D = 1 mean field) — still undone, low priority now that the
    generator is validated three other ways.
 
