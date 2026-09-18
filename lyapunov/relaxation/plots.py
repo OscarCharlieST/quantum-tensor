@@ -514,6 +514,222 @@ def timescale_scan_from_results(results, save_dir=None, prefix='', **kwargs):
     return fig, axes, path
 
 
+# ------------------------------------------------------------- Green-Kubo
+
+# L is an ordered magnitude, not an identity, so the series across the scan
+# get a sequential single-hue ramp light -> dark rather than categorical
+# hues, anchored on C_DATA. Markers vary too, so which curve is which never
+# rests on colour alone.
+L_MARKERS = ['o', 's', '^', 'D', 'v', 'P']
+
+# `D` means bond dimension to this project and diffusion constant to
+# Green-Kubo, and both appear in the same figure. The series key is
+# subscripted so the legend can never be read as the y-axis quantity.
+KEY_LABELS = {'L': 'L', 'D': r'D_{\rm bond}'}
+
+# Sampled from a single-hue ramp rather than a fixed list of steps: a fixed
+# list has to be re-spaced every time the number of system sizes changes,
+# and rounding onto it lands two series on neighbouring steps. Starting at
+# 0.42 rather than 0 keeps the lightest series legible against white --
+# below that the markers wash out.
+_L_LO, _L_HI = 0.42, 0.95
+
+
+def _L_style(i, n):
+    """Sequential colour + marker for the i-th of n system sizes."""
+    frac = _L_HI if n == 1 else _L_LO + (_L_HI - _L_LO) * i / (n - 1)
+    return plt.cm.Blues(frac), L_MARKERS[i % len(L_MARKERS)]
+
+
+def plot_green_kubo(results, name='current_total', key='L', axes=None,
+                    title=None, flat=0.1, n_eta=400):
+    """
+    Whether the Green-Kubo integral has converged to a diffusion constant,
+    and -- at these sizes -- the several ways in which it has not.
+
+    `key` is whichever of 'L' or 'D' the `results` actually vary, and it
+    only relabels: the series ramp, the legend and panel d's abscissa all
+    follow it. Both scans ask the same question of the same four panels.
+    Varying D is the sharper of the two here, because it is the only one
+    that separates a finite box from a finite variational manifold -- the
+    correlator is tangent-projected, so a D_peak that still moves with D is
+    measuring the manifold, not the physics.
+
+    D = int_0^inf dt <J(t)J(0)>_c / Var(H) is only a number if the integral
+    has somewhere to converge. On a finite chain the spectrum is discrete,
+    so it never does; the four panels are the four faces of that.
+
+    1. D(eta) against the broadening eta, log-log. The admissible window
+       (see response.broadening_window) is drawn thick on each curve and the
+       crossover maximum marked. A converged D would be a flat shelf with
+       the window sitting on it. What these show instead is a peak.
+    2. d log D / d log eta, the flatness test, with a +/- `flat` band drawn
+       as the tolerance a plateau would have to sit inside. The curves sweep
+       straight through it, from the finite-size floor (slope -> +1, where
+       the Lorentzian is narrower than the level spacing and resolves
+       individual modes) to the trivial tail (slope -> -1, where
+       I(eta) -> sum_k w_k / eta and the broadening is all that is being
+       measured).
+    3. The running integral I(t)/Var(H) itself, which is what one would like
+       to read a plateau off directly. It oscillates about its mean and does
+       not settle, which is why the broadened estimator exists at all.
+    4. The two estimates against L. D_peak rising while the admissible
+       window stays under half a decade wide is the summary of the problem:
+       the trend is real, but there is no shelf to read it off.
+    """
+    if axes is None:
+        fig, axes = plt.subplots(2, 2, figsize=(11.0, 8.0))
+        axes = axes.ravel()
+    else:
+        fig = axes[0].figure
+    ax_d, ax_slope, ax_run, ax_conv = axes
+
+    n = len(results)
+    peaks, wins, keys, decades = [], [], [], []
+    for i, r in enumerate(results):
+        obs = r['observables'][name]
+        omega, w = r['omega'], obs['weights']
+        chi, sc, tau = r['chi'], obs['scales'], obs['tau_cross']
+        colour, marker = _L_style(i, n)
+        win = resp.broadening_window(sc, tau)
+        keys.append(r[key])
+        decades.append(win['decades'])
+
+        eta = np.logspace(np.log10(sc['spacing'] / 10.0),
+                          np.log10(10.0 / tau), n_eta)
+        D = resp.green_kubo_broadened(omega, w, eta) / chi
+        label = (r"$%s=%d$" % (KEY_LABELS.get(key, key), r[key])) + (
+            "  (%.2f dec)" % win['decades'] if win['exists']
+            else "  (no window)")
+
+        # 1. D(eta), with the admissible window picked out on the curve
+        ax_d.plot(eta, D, lw=1.2, color=colour, alpha=0.55)
+        inside = (eta >= win['eta_min']) & (eta <= win['eta_max'])
+        if inside.any():
+            ax_d.plot(eta[inside], D[inside], lw=3.0, color=colour,
+                      solid_capstyle='round', label=label)
+        else:
+            # Matching the thin curve, not the thick one: a thick swatch
+            # would promise an admissible window this L does not have.
+            ax_d.plot([], [], lw=1.2, alpha=0.55, color=colour, label=label)
+        peak = int(np.argmax(D))
+        ax_d.plot(eta[peak], D[peak], marker=marker, ms=8, color=colour,
+                  mec='white', mew=1.2, ls='none', zorder=5)
+        peaks.append(D[peak])
+        wins.append(float(np.exp(np.mean(np.log(D[inside]))))
+                    if inside.any() else np.nan)
+
+        # 2. the flatness test
+        ax_slope.plot(eta, np.gradient(np.log(D), np.log(eta)), lw=1.8,
+                      color=colour, label=label)
+
+        # 3. the running integral, which is what does not settle
+        t = np.logspace(np.log10(0.05), np.log10(3 * sc['t_heis']), 1200)
+        ax_run.plot(t, resp.green_kubo_integral(omega, w, t) / chi, lw=1.3,
+                    color=colour,
+                    label=r"$%s=%d$" % (KEY_LABELS.get(key, key), r[key]))
+        ax_run.plot(sc['t_heis'],
+                    resp.green_kubo_integral(
+                        omega, w, np.array([sc['t_heis']]))[0] / chi,
+                    marker=marker, ms=8, color=colour, mec='white', mew=1.2,
+                    ls='none', zorder=5)
+
+    ax_d.set_xscale('log')
+    ax_d.set_yscale('log')
+    ax_d.set_xlabel(r'broadening $\eta$')
+    ax_d.set_ylabel(r'$D(\eta) = I(\eta)\,/\,\mathrm{Var}(H)$')
+    ax_d.set_title(r'a.  $D(\eta)$: thick = admissible window, '
+                   r'marker = crossover peak', fontsize=9, loc='left')
+    _legend(ax_d, loc='lower right')
+    _recede(ax_d)
+
+    ax_slope.axhspan(-flat, flat, color=C_AUX, alpha=0.16, zorder=0)
+    ax_slope.axhline(0.0, color=C_REF, lw=1.0, ls=':')
+    ax_slope.text(0.015, flat,
+                  r'a plateau would live in here ($|$slope$| < %s$)' % flat,
+                  fontsize=7.5, color='#2f7f63', ha='left', va='bottom',
+                  transform=ax_slope.get_yaxis_transform())
+    ax_slope.set_xscale('log')
+    ax_slope.set_ylim(-1.35, 1.35)
+    ax_slope.set_xlabel(r'broadening $\eta$')
+    ax_slope.set_ylabel(r'$d\log D\,/\,d\log \eta$')
+    ax_slope.set_title('b.  flatness test: the curves sweep through, '
+                       'they do not sit', fontsize=9, loc='left')
+    _legend(ax_slope, loc='lower left')
+    _recede(ax_slope)
+
+    ax_run.axhline(0.0, color=C_REF, lw=1.0, ls=':')
+    ax_run.set_xscale('log')
+    ax_run.set_xlabel('$t$')
+    ax_run.set_ylabel(r'$I(t)\,/\,\mathrm{Var}(H)$')
+    ax_run.set_title(r'c.  running integral $\int_0^t C\,ds$;  '
+                     r'marker = $t_{\rm heis}$', fontsize=9, loc='left')
+    _legend(ax_run, loc='upper left')
+    _recede(ax_run)
+
+    ax_conv.plot(keys, peaks, 'o-', ms=8, lw=1.8, color=C_DATA,
+                 label=r'$D_{\rm peak}$ (crossover maximum)')
+    # Plotted second and called out as unreliable rather than dropped: it
+    # is the estimator the method says to use, and seeing it drift while
+    # D_peak sits still is the evidence that the window, not the physics,
+    # is what moves. Widening the window extends it further down the
+    # rising flank, so its geometric mean falls -- it tracks where the
+    # window sits, not the transport.
+    ax_conv.plot(keys, wins, 's--', ms=8, lw=1.8, color=C_MODEL, alpha=0.75,
+                 label=r'$D$ over the window (drifts with window width)')
+    for k, pk, dec in zip(keys, peaks, decades):
+        if np.isfinite(dec):
+            ax_conv.annotate('%.2f dec' % dec, (k, pk),
+                             textcoords='offset points', xytext=(0, 10),
+                             ha='center', fontsize=7.5, color='#444444')
+    ax_conv.set_xticks(keys)
+    ax_conv.set_xlabel('$%s$' % KEY_LABELS.get(key, key))
+    ax_conv.set_ylabel('$D$')
+    ax_conv.set_title('d.  both estimates against $%s$, labelled by window '
+                      'width' % KEY_LABELS.get(key, key),
+                      fontsize=9, loc='left')
+    # Headroom below so the legend never lands on the lower series, which
+    # is exactly where it wants to sit once that series descends.
+    finite = [v for v in list(peaks) + list(wins) if np.isfinite(v)]
+    if finite:
+        lo, hi = min(finite), max(finite)
+        pad = 0.12 * (hi - lo) if hi > lo else 0.1 * max(abs(hi), 1.0)
+        ax_conv.set_ylim(lo - pad - 0.42 * (hi - lo), hi + pad)
+    _legend(ax_conv, loc='lower left')
+    _recede(ax_conv)
+
+    if title:
+        fig.suptitle(title, fontsize=10, x=0.01, ha='left')
+    fig.tight_layout()
+    return fig, axes
+
+
+def green_kubo_from_results(results, name='current_total', key=None,
+                            save_dir=None, prefix='', **kwargs):
+    """
+    plot_green_kubo off a list of run_one results, optionally saved.
+
+    With no `key`, picks whichever of L or D actually varies across the
+    results, so the same call serves both scans; the one held fixed goes in
+    the title.
+    """
+    cfg = results[0]
+    if key is None:
+        varies = [k for k in ('L', 'D') if len({r[k] for r in results}) > 1]
+        key = varies[0] if varies else 'L'
+    held = 'D' if key == 'L' else 'L'
+    kwargs.setdefault(
+        'title', "Green-Kubo from the total energy current   "
+                 "%s=%s, beta=%s" % (held, cfg[held], cfg['beta']))
+    fig, axes = plot_green_kubo(results, name=name, key=key, **kwargs)
+    path = None
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        path = os.path.join(save_dir, '%sgreen_kubo.png' % prefix)
+        fig.savefig(path, dpi=140)
+    return fig, axes, path
+
+
 # ------------------------------------------------ unpackers for run_one dicts
 
 def _result_title(result, name):
@@ -565,9 +781,10 @@ def plot_result(result, name='z_mid', save_dir=None, prefix='', **kwargs):
 #
 # With no --pickle it re-runs run_relaxation_scan.run_one for that L (a few
 # seconds at L=8, longer at 16); with --pickle it plots a scan already saved
-# by run_relaxation_scan.main, no physics re-run. The seed matters because
-# inf_T_thermofield's rank-seeding noise comes from the global numpy RNG, so
-# runs are otherwise not reproducible.
+# by run_relaxation_scan.main, no physics re-run. --seed is a leftover from
+# when the state build was seeded with random noise (SEED_NOISE = 0 since
+# 2026-09-18); the build is deterministic now, so it only matters if a
+# nonzero noise is passed explicitly.
 
 def _cli(argv=None):
     import argparse
@@ -589,6 +806,10 @@ def _cli(argv=None):
                         help='plot from a saved scan_results.pkl instead of '
                              'running; picks the entry matching --L (and --D '
                              'if given)')
+    parser.add_argument('--green-kubo', action='store_true',
+                        help='with --pickle, also write the Green-Kubo '
+                             'figure: D(eta), its flatness test, the running '
+                             'integral, and both estimates against L')
     parser.add_argument('--scan', action='store_true',
                         help='with --pickle, also write the across-L '
                              'timescale comparison (all entries, not just --L)')
@@ -637,6 +858,22 @@ def _cli(argv=None):
             all_results, save_dir=save_dir,
             prefix=f"D{all_results[0]['D']}_")
         print('wrote', path)
+    if args.green_kubo:
+        if all_results is None or len(all_results) < 2:
+            raise SystemExit('--green-kubo needs a --pickle holding at '
+                             'least two entries, varying either L or D')
+        # Name the file after whichever variable is *held*, since that is
+        # what distinguishes one Green-Kubo figure from another.
+        varies = [k for k in ('L', 'D')
+                  if len({r[k] for r in all_results}) > 1]
+        held = 'D' if varies[:1] == ['L'] else 'L'
+        _, _, path = green_kubo_from_results(
+            all_results, name=args.obs if args.obs != 'all' else
+            'current_total',
+            save_dir=save_dir,
+            prefix='%s%s_' % (held, all_results[0][held]))
+        print('wrote', path)
+
     if args.show:
         plt.show()
 

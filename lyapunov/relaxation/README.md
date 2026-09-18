@@ -215,7 +215,7 @@ Scan defaults in `run_relaxation_scan.py`:
 | `D` | 8 | same for every L, so the tangent dimension grows only through L |
 | `L_VALUES` | 4, 8, 12, 16 | |
 | `IMAG_STEPS` | 60 | TDVP steps for the imaginary-time build |
-| `SEED_NOISE` | 1e-2 | rank seeding, see below |
+| `SEED_NOISE` | 0 | none needed, see below |
 
 **On β = 0.1** (changed from β = 1 on 2026-09-17). Hydrodynamics is a
 high-temperature expectation, so the standing convention across `lyapunov/`
@@ -253,12 +253,41 @@ If the relaxation rates turn out to depend strongly on β, that is a
 physical result worth having, not a nuisance. Results recorded in this
 README predating the change were taken at β = 1.
 
-**On the seeding noise.** `inf_T_thermofield` returns a rank-1 state
-zero-padded to bond dimension D, and single-site TDVP cannot grow the
-Schmidt rank, so without noise the imaginary-time evolution stays rank 1.
-The noise is what lets it fill the bond dimension at all. It does mean
-psi_uniform is only approximately the thermofield double, which is exactly
-what `fixed_point_residual` measures.
+**On the seeding noise — removed 2026-09-18, and it was the dominant
+error.** `inf_T_thermofield` returns a rank-1 state zero-padded to bond
+dimension D. Single-site TDVP is a fixed-rank method, which was taken to
+mean the evolution would stay rank 1 without a noise seed. That reasoning
+is wrong. `states.left_orthogonal_tensor` calls
+`la.svd(..., full_matrices=False)` and keeps every singular value including
+the exact zeros, so after one canonicalization the `A` tensors are dense
+isometries whose columns past the rank are an arbitrary orthonormal
+completion. The environments then have support on every bond index, `H_eff`
+couples the centre tensor into the zero-weight directions, and the
+evolution fills the padded quadrants by itself.
+
+Measured at L = 16, D = 12: the noiseless build reaches full rank (12 of 12
+Schmidt values above 1e-10) with `fixed_point_residual` = 1.1e-7, against
+7.1e-2 with `noise = 1e-2`.
+
+| D | noise | rank | `‖P H ψ*‖` | n_eff | η window | D_peak |
+|---|---|---|---|---|---|---|
+| 8 | 0 | 8/8 | 5.9e-07 | 114 | 0.27 dec | 0.4446 |
+| 8 | 1e-2 | 8/8 | 6.7e-02 | 150 | 0.37 dec | 0.4353 |
+| 12 | 0 | 12/12 | 1.1e-07 | 322 | 0.70 dec | 0.4647 |
+| 12 | 1e-2 | 12/12 | 7.1e-02 | 450 | 0.85 dec | 0.5907 |
+
+Three consequences. The residual resumes falling with D (5.9e-7 → 1.1e-7)
+instead of sitting on a noise floor that was flat across D = 6…12. The
+apparent bond-dimension drift in `D_peak` largely evaporates: 0.445 → 0.465
+noiseless (4.5%) against 0.435 → 0.591 noisy (36%), so most of what looked
+like variational non-convergence was the seed. And `n_eff` *falls* without
+the noise, which narrows the admissible broadening window — the noise had
+been inflating the effective mode count by smearing weight onto spurious
+modes, so the narrower noiseless window is the honest one.
+
+**Any result in this README dated before 2026-09-18 was computed at a fixed
+point ≈ 6% off the thermofield double**, and the error was self-inflicted
+rather than a finite-D limitation.
 
 **Gauge pitfall, learned the hard way.** The centre tensors C^n must be
 derived from the *same* A_L and A_R used everywhere else, via the bond
@@ -422,12 +451,15 @@ It also runs from the terminal (repo root, Anaconda base env):
     python lyapunov/relaxation/plots.py --L 8 --D 8 --obs energy_mid --seed 0
 
 `--obs` takes `z_mid`, `x_mid`, `energy_mid` (the Hamiltonian term on the
-centre bond) or `all`. `--pickle scan_results.pkl` plots a saved scan
-instead of re-running, and `--show` opens the figures. PNGs go to
-`figures/L{L}_D{D}_{obs}_{spectrum,response}.png`. **Pass `--seed`:** the
-rank-seeding noise in `inf_T_thermofield` comes from the global numpy RNG,
-so unseeded runs differ visibly (τ_fit for `z_mid` at L=8 ranged 8.7–12.7
-across three runs).
+centre bond), `current_mid`, `current_total` or `all`. `--pickle
+scan_results.pkl` plots a saved scan instead of re-running, `--green-kubo`
+writes the Green–Kubo figure from a scan varying either L or D, and
+`--show` opens the figures. PNGs go to
+`figures/L{L}_D{D}_{obs}_{spectrum,response}.png`. `--seed` is a leftover
+from the noise-seeded build and no longer matters: with `SEED_NOISE = 0`
+the state build is deterministic. It used to matter a great deal (τ_fit for
+`z_mid` at L=8 ranged 8.7–12.7 across three unseeded runs), which in
+hindsight was the noise announcing itself.
 
 Not yet written: the wavevector-resolved energy density needed to turn
 `Γ_q` vs `q²` into a diffusion constant.

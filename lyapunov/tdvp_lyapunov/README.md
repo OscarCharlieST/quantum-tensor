@@ -531,9 +531,11 @@ take (`np.product` in `updatemethod.exact`).
 | L16_D4_beta1 | A ×16 | 0.05 | 300 | t = 8 | same |
 | L8_D12_beta1 | A ×16 | 0.05 | 200 | t = 8 | same |
 
-All start from the noise-seeded imaginary-time thermofield double
+All start from the imaginary-time thermofield double
 (`build_uniform_thermofield`, seed 0, 60 steps) and evolve under `H_sym`
-with Lanczos TDVP. Per-run figures: `figures/<run>_{spectrum,
+with Lanczos TDVP. These runs predate 2026-09-18 and so used
+`SEED_NOISE = 1e-2`, which is now known to be unnecessary and to dominate
+the fixed-point residual; they have not been repeated noiseless. Per-run figures: `figures/<run>_{spectrum,
 convergence, clv*}.png` (CLVs at ~60% of each run, the rest used as the
 Ginelli backward transient), and `<run>_hlm_{enrichment,candidates}.png`. Cross-run: `figures/compare_*.png`
 (`compare_runs.py`, window t > 11).
@@ -829,10 +831,13 @@ opposite of the worry.** The smallest Schmidt value *rises* from 0.096 at
 β = 1 to 0.21 at β ≤ 0.1, and the ±λ pairing residual improves five-fold
 (0.048 → 0.009). `Σλ` stays within 0.013 of zero. The concern that the
 nearly-rank-1 β = 1e-2 thermofield double would leave the tangent space
-built on numerically null directions does not materialize: the noise
-seeding plus 160 steps of real-time `H_sym` evolution fill the bond
-dimension before the tangent vectors are switched on. **Nothing here
-blocks going to β = 1e-2.**
+built on numerically null directions does not materialize: the evolution
+fills the bond dimension before the tangent vectors are switched on.
+(Written at the time as "the noise seeding plus 160 steps of real-time
+`H_sym` evolution"; the noise turns out to be doing none of that work — see
+`relaxation/README.md`, "On the seeding noise". The runs below did use
+`noise = 1e-2`, so their `ψ*` carries that artefact, but the bond dimension
+would have filled without it.) **Nothing here blocks going to β = 1e-2.**
 
 **2. The flow saturates by β = 0.1.** The β = 0.1 and β = 0.01 spectra lie
 on top of each other over the whole range (λ_max 0.533 vs 0.542), while
@@ -986,7 +991,52 @@ not for reading any one vector.
 5. **Longer D = 12 run**, before reading the D dependence of the spectrum
    (finding 4) or lambda_0.
 6. Rung 4 (D = 1 mean field) — still undone, low priority now that the
-   generator is validated three other ways.
+   generator is validated three other ways. See item 7: the by-hand tangent
+   basis wanted there is the same object.
+7. **Noiseless seeding, and an exact tangent basis at infinite temperature**
+   (idea, not started). `relaxation/` dropped its `noise = 1e-2` seed on
+   2026-09-18 and its fixed-point residual fell from 7e-2 to 1e-7; the seed
+   turned out to be unnecessary, because `left_orthogonal_tensor` keeps the
+   zero singular values and fills their columns with an arbitrary
+   orthonormal completion, so the evolution walks off the rank-deficient
+   boundary by itself. Every run in this file used the seed. Two versions of
+   the idea, and they are not equally promising.
+
+   *The cheap version — just set `noise = 0` — probably changes little
+   here, and the reason is worth recording.* The blocker in this subproject
+   is conditioning, not rank: `tangent_generator.py` inverts the bond
+   matrices explicitly (`Lam_inv = {s: la.inv(L) for s, L in
+   frame.Lam.items()}`), so a near-rank-deficient point is unusable.
+   Measured right after the imaginary-time build at L = 16, D = 12,
+   `s_min/s_max` is 8.4e-10 noiseless against 7.5e-10 with the seed — the
+   same to within nothing. The noise never conditioned the state; what does
+   is the real-time `H_sym` evolution before the tangent vectors are
+   switched on (`s_min` reaches 0.1–0.2 by then, see the temperature scan).
+   So dropping it costs nothing and is the right default, but the gain that
+   `relaxation/` saw came from starting the *tangent analysis* at the built
+   state, which this subproject does not do. Measure, do not assume.
+
+   *The interesting version is to start at infinite temperature itself.*
+   There the thermofield double is an exact product of Bell pairs —
+   `(|00> + |11>)/sqrt(2)` per doubled site, rank 1, no imaginary-time build
+   and so no build error at all. The generic null-space construction is
+   ill-defined at a rank-deficient point, which looks like a blocker, but
+   the state is simple enough that `V_L` can be written down **by hand**:
+   each site carries one known normalized vector in C^4, and its null space
+   is the orthogonal complement, a 4x3 isometry available in closed form.
+   That is *easier* than the SVD route, not harder, and it gives an exactly
+   known starting frame.
+
+   Two caveats before anyone builds it. Without padding, the by-hand frame
+   is the tangent space of the **D = 1 manifold** — i.e. it is exactly rung
+   4 above, reached from the other direction. With padding to bond dimension
+   D it is the singular case: at a rank-deficient point the manifold has a
+   boundary and the tangent cone is not a vector space, so the +/-lambda
+   pairing argument (which assumes a symplectic tangent *space*) may not
+   hold until the state has moved into the interior. That makes the pairing
+   residual the diagnostic to watch, and it may be the more interesting
+   measurement of the two — an exactly-known starting point is precisely
+   where a violation would be attributable.
 
 Not worth pursuing without a fix: covariant vectors over the *full*
 spectrum, where the Ginelli backward pass is ill-conditioned (see the k = 2n

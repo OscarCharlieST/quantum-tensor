@@ -195,10 +195,16 @@ D ≤ 4 produced before this fix are suspect**, including in the notebooks.
   tensors, environments, overlaps — must derive them from one shared pass (e.g. via bond matrices), not
   recompute them. This produces plausible-looking but meaningless numbers when violated; see
   `lyapunov/WORKFLOW.md` for the instance that caught it.
-- **Single-site TDVP cannot grow bond dimension** (it's a fixed-rank manifold method), and
-  `thermofield.inf_T_thermofield` returns a rank-1 state zero-padded to bond dimension D. So
-  imaginary-time evolution from it stays rank 1 unless seeded — that's what the `noise` argument is for,
-  and it means the resulting finite-temperature state is only approximately the thermofield double.
+- **A padded rank-1 seed does fill its bond dimension under TDVP** — despite single-site TDVP being a
+  fixed-rank manifold method, and contrary to what this file said until 2026-09-18.
+  `thermofield.inf_T_thermofield` returns a rank-1 state zero-padded to bond dimension D, but
+  `states.left_orthogonal_tensor` calls `la.svd(..., full_matrices=False)` and keeps every singular
+  value including the exact zeros, so after one canonicalization the `A` tensors are dense isometries
+  whose columns past the rank are an arbitrary orthonormal completion. The environments then have
+  support on every bond index, `H_eff` couples the centre tensor into the zero-weight directions, and
+  the evolution walks off the rank-deficient boundary into the interior. **Prefer `noise=0`**: measured
+  at L=16, D=12, the noiseless build reaches full rank 12/12 with `||P H_asym psi*|| = 1.1e-7` against
+  7.1e-2 for `noise=1e-2`, so the seed that was thought necessary was in fact the dominant error term.
   Note also that `tdvp` never truncates (no `max_bond_dim` is threaded through it), so bond dimension is
   fixed by whatever the initial state carries.
 - `thermofield.th_onesite` passes `[site, W]` to `ops.mpo`, where every other caller passes a list of

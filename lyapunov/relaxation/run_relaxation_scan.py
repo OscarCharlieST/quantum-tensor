@@ -36,12 +36,17 @@ BETA = 0.1                              # inverse temperature of psi_uniform
 D = 8                                   # bond dimension, same for every L
 L_VALUES = [4, 8, 12, 16]
 IMAG_STEPS = 60                         # TDVP steps for the imaginary-time build
-SEED_NOISE = 1e-2                       # rank-seeding noise, see note below
+SEED_NOISE = 0.0                        # none needed, see build_uniform_thermofield
 T_MAX_FACTOR = 3.0                      # response evaluated to this * t_heis
 N_TIMES = 6000
 
+D_VALUES = [6, 8, 10, 12]               # bond-dimension scan, at L_FIXED
+L_FIXED = 16
+
 OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         'scan_results.pkl')
+BOND_OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             'bond_scan_results.pkl')
 
 
 def build_uniform_thermofield(L, D, beta, steps, noise=SEED_NOISE):
@@ -49,12 +54,26 @@ def build_uniform_thermofield(L, D, beta, steps, noise=SEED_NOISE):
     Imaginary-time evolve the infinite-temperature thermofield double under
     the *symmetric* thermofield Hamiltonian to inverse temperature beta.
 
-    The noise is not cosmetic: inf_T_thermofield returns a rank-1 state
-    zero-padded to bond dimension D, and single-site TDVP cannot grow the
-    Schmidt rank, so without seeding it the evolution stays rank 1 and the
-    tangent space collapses. It does mean psi_uniform is only approximately
-    the thermofield double -- fixed_point_residual below measures how
-    approximate.
+    No seeding noise is needed, and adding it is actively harmful.
+    inf_T_thermofield returns a rank-1 state zero-padded to bond dimension
+    D, and single-site TDVP is a fixed-rank method, which long looked like
+    it meant the evolution would stay rank 1. It does not:
+    states.left_orthogonal_tensor calls la.svd(..., full_matrices=False)
+    and keeps every singular value including the exact zeros, so after one
+    canonicalization the A tensors are dense isometries whose columns past
+    the rank are an arbitrary orthonormal completion. The environments then
+    have support on every bond index, H_eff couples the centre tensor into
+    the zero-weight directions, and the evolution walks off the
+    rank-deficient boundary into the interior on its own.
+
+    Measured 2026-09-18 at L=16, D=12: the noiseless build reaches full
+    rank (12 of 12 Schmidt values above 1e-10) with
+    ||P H_asym psi*|| = 1.1e-7, against 7.1e-2 for the noise=1e-2 seed that
+    was previously thought necessary -- five orders of magnitude, and the
+    seed was the dominant error in every number this subproject produced
+    before that date. The residual also resumes falling with D once the
+    noise is gone (5.9e-7 at D=8 -> 1.1e-7 at D=12), which it had not done
+    at all while the noise set the floor.
     """
     H_phys = ops.tilted_ising(J=J, h=H_FIELD, g=G_FIELD, N=L)
     H_sym = tf.thermofield_hamiltonian(H_phys, asym=False)
@@ -99,8 +118,9 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
 
     # How good a fixed point is psi_uniform? ||P H_asym psi*|| is exactly
     # zero for the true thermofield double; whatever we get here is the
-    # combined finite-D and rank-seeding error, and it bounds how much of
-    # any measured rate could be artefact.
+    # finite-D and finite-imaginary-time error, and it bounds how much of
+    # any measured rate could be artefact. With SEED_NOISE = 0 this now
+    # falls with D instead of sitting on a noise floor.
     residual = resp.observable_tangent_vector(
         H_asym, A_L, A_R, C, V_L, basis_index_map, sites
     )
@@ -120,6 +140,13 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
         'current_mid': resp.single_copy_current(
             mid, J=J, h=H_FIELD, g=G_FIELD
         ),
+        # Green-Kubo is a statement about the *total* current: the
+        # autocorrelator of current_mid above is only the r = 0 term of
+        # sum_r <j_r(t) j_0(0)>, and it falls off like 1/L, so it measures
+        # a vanishing fraction of the transport. See README, "Green-Kubo".
+        'current_total': resp.single_copy_total_current(
+            sites, J=J, h=H_FIELD, g=G_FIELD
+        ),
     }
 
     result['observables'] = {}
@@ -127,6 +154,7 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
         v = resp.observable_tangent_vector(
             O, A_L, A_R, C, V_L, basis_index_map, sites
         )
+        W = resp.pad_with_identity(O, sites)
         weights = resp.spectral_weights(omega, U, v)
         scales = resp.timescales(omega, weights)
         times = np.linspace(0, T_MAX_FACTOR * scales['t_heis'], N_TIMES)
@@ -144,7 +172,24 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
             't_fit_end': t_fit_end,
             'tau_cross': resp.crossing_time(times, C_t),
             'total_weight': float(weights.sum()),
+            # What fraction of O's static weight the tangent space sees.
+            # Exactly 1 for every observable here, which is worth recording
+            # rather than assuming -- it says the Green-Kubo numerator has
+            # no *static* truncation error, leaving fixed_point_residual to
+            # bound the dynamical one on its own.
+            'capture': float(weights.sum() / resp.static_variance(
+                psi, ops.mpo([(n, W[n]) for n in sites], O.l, O.r)
+            )),
         }
+
+    # The Green-Kubo denominator, exact rather than tangent-projected.
+    result['chi'] = resp.static_susceptibility(
+        psi, sites, J=J, h=H_FIELD, g=G_FIELD
+    )
+    tot = result['observables']['current_total']
+    result['green_kubo'] = resp.diffusion_constant(
+        omega, tot['weights'], result['chi'], tot['scales'], tot['tau_cross']
+    )
     return result
 
 
@@ -156,6 +201,12 @@ def summarize(result):
     print(f"  timing: state {result['t_build_state']:.1f}s, "
           f"tangent {result['t_build_tangent']:.1f}s, "
           f"eigh {result['t_eigh']:.1f}s")
+    gk = result['green_kubo']
+    win = (f"[{gk['eta_min']:.3f}, {gk['eta_max']:.3f}] "
+           f"({gk['decades']:.2f} dec)" if gk['exists'] else "empty")
+    print(f"  Var(H)={result['chi']:.3f}   Green-Kubo eta window {win}   "
+          f"D_win={gk['D']:.4f}  dlnD/dlneta={gk['log_slope']:.3f}   "
+          f"D_peak={gk['D_peak']:.4f} at eta={gk['eta_peak']:.3f}")
     for name, obs in result['observables'].items():
         s = obs['scales']
         print(f"    {name:11s} tau_fit={obs['tau_fit']:8.3f} "
@@ -201,5 +252,53 @@ def main(l_values=L_VALUES):
     return results
 
 
+def main_bond_scan(L=L_FIXED, d_values=D_VALUES):
+    """
+    The same analysis at fixed L, scanning bond dimension instead.
+
+    This is the scan the Green-Kubo question actually needs. Widening the
+    admissible broadening window needs more modes carrying weight, and the
+    L scan buys them slowly -- worse, the total current concentrates its
+    weight on far fewer modes than a local current does (n_eff 98 vs 409 at
+    L=16, D=8), so the effective level spacing is large for exactly the
+    observable that needs it small. The tangent dimension goes as ~39 D^2
+    at L=16, so bond dimension is the cheaper lever on the mode count. It
+    is also the convergence check the variational approximation needs
+    anyway: the correlator is tangent-projected, and nothing so far says
+    how much of D_peak is physics and how much is the manifold.
+
+    eigh dominates and scales as the cube of the tangent dimension, so
+    D=12 costs roughly 11x D=8.
+    """
+    results = []
+    for D_val in d_values:
+        print(f"\n=== L = {L}, D = {D_val} ===")
+        results.append(run_one(L, D=D_val))
+        summarize(results[-1])
+
+    with open(BOND_OUT_PATH, 'wb') as f:
+        pickle.dump({'config': {'J': J, 'h': H_FIELD, 'g': G_FIELD,
+                                'beta': BETA, 'L': L,
+                                'imag_steps': IMAG_STEPS,
+                                'seed_noise': SEED_NOISE},
+                     'results': results}, f)
+    print(f"\nsaved to {BOND_OUT_PATH}")
+
+    print("\n=== Green-Kubo against bond dimension ===")
+    for r in results:
+        gk = r['green_kubo']
+        win = (f"[{gk['eta_min']:.3f}, {gk['eta_max']:.3f}] "
+               f"({gk['decades']:.2f} dec)" if gk['exists'] else 'empty')
+        print(f"  D={r['D']:<3d} dim={r['dim']:<6d} "
+              f"resid={r['fixed_point_residual']:.3e}  n_eff="
+              f"{r['observables']['current_total']['scales']['n_eff']:6.1f}  "
+              f"window {win:>24s}  D_peak={gk['D_peak']:.4f}  "
+              f"slope={gk['log_slope']:.3f}")
+    return results
+
+
 if __name__ == '__main__':
-    main()
+    if '--bond-scan' in sys.argv:
+        main_bond_scan()
+    else:
+        main()

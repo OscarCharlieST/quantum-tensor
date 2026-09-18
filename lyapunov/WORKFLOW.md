@@ -51,7 +51,7 @@ true exponents by linearizing along a trajectory where `Hψ ≠ 0`.
 
 | # | step | function |
 |---|---|---|
-| 1 | imaginary-time TDVP under `H_sym` from the noise-seeded infinite-T state | `run_relaxation_scan.build_uniform_thermofield` |
+| 1 | imaginary-time TDVP under `H_sym` from the padded rank-1 infinite-T state (no noise seed; the evolution fills the padding itself) | `run_relaxation_scan.build_uniform_thermofield` |
 | 2 | canonicalize (three sweeps) + build both environment families | `tangent_hamiltonian.canonicalize_and_build_environments` |
 | 3 | null-space tensors `V_L^n` | `build_null_space_tensor` |
 | 4 | centre tensors `C^n` | `build_centre_tensors` — gauge-critical, see below |
@@ -162,8 +162,15 @@ Fix: derive `C^n` from the bond matrices (`C^n = Λ^{n-1} A_R^n`,
 2. **`x_mid` relaxes faster than its own Zeno time**, so there is no
    exponential regime and `tau_fit` correctly returns `nan`. Only the 1/e
    crossing means anything there.
-3. **Seeding noise 1e-2** makes `ψ*` only approximately the thermofield
-   double. `fixed_point_residual` ≈ 1e-2 against a tangent bandwidth ≈ 5.
+3. ~~**Seeding noise 1e-2** makes `ψ*` only approximately the thermofield
+   double.~~ **Resolved 2026-09-18: the noise was never needed.** Single-site
+   TDVP is fixed-rank, but `left_orthogonal_tensor`'s
+   `la.svd(..., full_matrices=False)` keeps the zero singular values and
+   fills their columns with an arbitrary orthonormal completion, so the
+   environments reach every bond index and `H_eff` drives the centre tensor
+   off the rank-deficient boundary. `SEED_NOISE = 0` now; the residual drops
+   from ≈ 7e-2 to ≈ 1e-7 and resumes falling with D. Numbers in this file
+   predating that date carry the ≈ 6% artefact.
 4. **`n_eff` ≈ 110 at L=12** is a modest continuum. The dephasing argument
    wants the level spacing well below the decay rate; this is the main
    reason to expect the L=16 point to still be drifting.
