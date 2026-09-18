@@ -374,11 +374,231 @@ and is stable across L where the fit is not.
   observable — narrower than for the energy density.
 - L = 4 is not converged for either observable and should be ignored.
 
-**Open lead.** The zero-frequency weight in finding 2 *is* the Green–Kubo
-integrand. Turning `A_j(ω→0)` into a diffusion constant, and comparing it
-with the `D` from the nonlinear Gaussian-width fits in `qtensor.visualise`,
-is the natural next step and needs no new machinery — but it is a separate
-deliverable and has not been done.
+**Followed up** in the next section: the zero-frequency weight in finding 2
+*is* the Green–Kubo integrand.
+
+## Green-Kubo: the diffusion constant (2026-09-18)
+
+### The quantity
+
+    kappa = (beta^2 / L) int_0^inf dt <J(t) J(0)>_c,
+    c     = (beta^2 / L) Var(H),          D = kappa / c
+
+so `beta^2` and `L` both cancel and
+
+    D = int_0^inf dt <J(t) J(0)>_c / Var(H).
+
+Temperature enters only through `psi*`. Both numerator and denominator are
+extensive, and it is their ratio converging in `L` that has to be checked.
+
+### It must be the *total* current
+
+`single_copy_current` is the local `j_mid`, and its autocorrelator is only
+the `r = 0` term of `sum_r <j_r(t) j_0(0)>`. The `r != 0` terms carry the
+diffusive contribution, and the local term is a vanishing fraction of the
+whole: `D_peak` from `j_mid` alone falls 0.059, 0.028, 0.018, 0.013 across
+L = 4, 8, 12, 16, i.e. like `1/L`, while the total current gives 0.45.
+
+`single_copy_total_current` builds `J_tot` as one operator. Summing the
+three-site `j_l` over *every* site, dropping what falls off the open ends,
+telescopes onto nearest-neighbour bonds:
+
+    J_tot = J g sum_l ( y_l z_{l+1} - z_l y_{l+1} )
+
+so it is a bond-dimension-4 finite-state machine at any `L`, rather than
+the ~2L of an uncompressed `mpo.__add__` direct sum. Checked three ways:
+against the dense operator (exact), against `sum_l j_l` built term by term
+(exact), and against the windowed polarization identity
+`sum_{l=a+1}^{b} j_l = i[H, sum_{l=a}^{b} l h_l] - a j_a + b j_{b+1}`
+(3.6e-15). The *global* version of that identity is useless on an open
+chain — Abel summation leaves `-(N-2) j_{N-1}`, which grows with `N`.
+
+The denominator is `static_susceptibility` = `Var(H)`, from exact MPO
+algebra and deliberately *not* tangent-projected: it is a thermodynamic
+quantity, so keeping it exact confines all projection error to the
+numerator. `static_variance` also gives the capture ratio
+`sum_k w_k / Var(O)`, which is **1.0000 to machine precision** for every
+observable here. The Green-Kubo numerator therefore carries no *static*
+truncation error. (Not a vacuous test: a weight-L product of random
+single-site rotations scores 0.66. And capture = 1 says only that `C(0)` is
+exact — the *evolution* is still tangent-projected.)
+
+### The integral is closed form; that is not the problem
+
+    I(t) = int_0^t C = sum_k w_k sin(omega_k t) / omega_k
+
+exactly, for any `t`, from the one diagonalization already done. No
+quadrature, no time stepping, nothing to converge. (`green_kubo_integral`
+writes it with `sinc` so the `omega = 0` modes contribute `w_k t` without a
+near-zero branch.)
+
+The problem is that on a finite chain the spectrum is a discrete set of
+deltas, so `C(t)` never decays — it dephases and then recurs, and `I(t)`
+oscillates about its mean forever instead of converging. Averaging over the
+nominal plateau window gives `D = 0.048 +/- 0.076` at L = 16: consistent
+with zero and useless. Panel c of the figures shows it.
+
+### The broadened estimator
+
+Regulate the finite-size problem at its source by giving each delta a
+Lorentzian width `eta`:
+
+    I(eta) = int_0^inf dt e^{-eta t} C(t)
+           = sum_k w_k eta / (omega_k^2 + eta^2)
+
+also exact, and with no time grid at all. `eta` must be large enough to
+wash out the level discreteness and small enough not to eat into the
+correlator's own decay, which is `broadening_window`:
+
+    safety * spacing  <  eta  <  1 / (safety * tau)
+
+existing only when `tau * spacing < 1/safety^2`. **A plateau in `D(eta)`
+across that window is what has to replace convergence of the time
+integral**, and `diffusion_constant` reports `log_slope = d log D/d log eta`
+as the test: `|slope| << 1` means the value means something.
+
+### Results
+
+L scan at D = 8, and bond scan at L = 16 (`figures/D8_green_kubo.png`,
+`figures/L16_green_kubo.png`):
+
+| L | eta window | D_win | slope | D_peak |
+|---|---|---|---|---|
+| 4 | empty | - | - | 0.2171 |
+| 8 | empty | - | - | 0.3570 |
+| 12 | empty | - | - | 0.4115 |
+| 16 | [0.075, 0.140] (0.27 dec) | 0.3129 | 0.543 | 0.4446 |
+
+| D | n_eff | eta window | D_win | slope | D_peak |
+|---|---|---|---|---|---|
+| 6 | 27 | empty | - | - | 0.4479 |
+| 8 | 115 | [0.075, 0.140] (0.27 dec) | 0.3129 | 0.543 | 0.4446 |
+| 10 | 186 | [0.046, 0.136] (0.47 dec) | 0.2520 | 0.679 | 0.4571 |
+| 12 | 322 | [0.027, 0.135] (0.70 dec) | 0.2165 | 0.670 | 0.4647 |
+
+**1. `D_peak` is converged in bond dimension**: 0.448, 0.445, 0.457, 0.465,
+a 4% spread with no trend. It is still climbing in `L` (0.217 -> 0.445).
+
+**2. Bond dimension is the better lever on the window**, because the
+tangent dimension goes as ~39 D^2 at L = 16 while the L scan buys modes
+slowly. The window opens from empty to 0.70 decades, entirely from the
+*lower* edge as the level spacing shrinks.
+
+**3. There is still no plateau anywhere.** The slope sits at 0.54-0.68 and
+does not improve with the wider window. So `D ~ 0.45` is a crossover bound,
+not a measurement.
+
+**4. `D_peak` is read outside its own validity window.** `eta_peak` is
+0.35, 0.35, 0.34 against window upper bounds of 0.140, 0.136, 0.135 — the
+maximum always sits *above* the admissible range, where the Lorentzian is
+already cutting into the correlator's decay. So it is biased high.
+
+**5. `D_win` is worse.** It falls 0.313, 0.252, 0.217 as the window widens,
+because widening extends it further down the rising flank toward the
+finite-size floor. It tracks where the window sits, not the transport. Kept
+in the figures and labelled as such: watching it slide while `D_peak` holds
+still is the evidence that the window moves and the physics does not.
+
+Not yet compared against the `D` from the nonlinear Gaussian-width fits in
+`qtensor.visualise`, which remains the external validation.
+
+### Zero-frequency weight: the current has none, the density must
+
+The `omega = 0` weight is the sharpest thing the spectrum says, and it says
+opposite things about the two observables.
+
+**The current carries no Drude weight.** Below `|omega| < 1e-10` it is ~0
+for every L >= 8, below 1e-3 at most 5e-7, below 1e-2 at most 2.3e-4. So
+there is no ballistic delta and `D` is at least finite in principle.
+
+**The energy density carries an exact one, and must.** `conserved_fraction`
+measures it: 0.349, 0.156, 0.100, 0.074 at L = 4, 8, 12, 16, and it is
+perfectly independent of bond dimension (0.07396 at every D from 6 to 12).
+This is the Mazur bound. An observable overlapping a conserved quantity
+cannot relax to zero — split it,
+
+    h_mid = [Cov(h_mid, H)/Var(H)] H + h_perp,
+
+and the first term is a constant of the motion, contributing the same
+amount to `<h(t)h(0)>` at every `t` including infinity. Only `h_perp`
+dephases. Physically: a bump of energy on one bond is partly "the chain now
+holds more energy", which has nowhere to go; it spreads until uniform, and
+uniform across `L` bonds still leaves ~1/L of it on the middle bond
+forever.
+
+Verified, not assumed. `H_asym (H(x)I)|psi*> = [H(x)I - I(x)H,
+H(x)I]|psi*> = 0` because the two copies commute, so `(H(x)I)|psi*>` is an
+*exact* zero mode. `H_tangent` has exactly one zero eigenvalue at
+L = 8, 12, 16; the energy tangent vector lies in it to ten digits; and
+`h_mid`'s weight there reproduces `Cov(h,H)^2/(Var h Var H)` to six digits
+(0.1555070 vs 0.1555065 at L = 8). It scales as `c/L` with
+`c -> Cov(h,H)/Var(h) = 1.13`, against 1.14 from the `beta -> 0`
+arithmetic. Exactly one zero mode and not two because on a thermofield
+double `(H(x)I)|psi> = (I(x)H^T)|psi>`.
+
+**So the floor is a passed conservation test, not a leak.** Its absence, or
+a drift with bond dimension, would have meant the tangent flow was losing
+energy. `fit_relaxation_time` and `crossing_time` both take `c_inf` and
+work on `dephasing_response(C, c_inf) = (C - C_inf)/(1 - C_inf)`; the
+decomposition `C = C_inf + (1 - C_inf) C~` is exact, and only `C~` has a
+relaxation time.
+
+### The spectral-density limit: what to measure next
+
+Everything above is one statement about the spectral density
+`A_O(omega) = sum_k w_k delta(omega - omega_k)`, and saying it that way is
+more useful than any of the time-domain fits.
+
+The Green-Kubo integral *is* the zero-frequency spectral density:
+`int_0^inf C(t) dt = pi A(0)`. More precisely, for `A(omega) = c|omega|^s`
+near zero, substituting `omega = eta u` in
+
+    I(eta) = int domega A(omega) eta/(omega^2 + eta^2)
+
+gives `I(eta) = c K_s eta^s` with `K_s = int |u|^s/(u^2+1) du`. Therefore
+
+    d log D / d log eta  =  d log A / d log omega.
+
+**The flatness test is a measurement of the spectral density's exponent.**
+`|slope| < 0.1` means `A(omega)` is flat near zero, which is the definition
+of diffusive; and the two limits the figures show are both forced.
+At small `eta` the Lorentzian is narrower than the level spacing and sees a
+gap, `A -> 0`, so slope `-> +1`. At large `eta` it integrates the whole
+band, `I -> sum_k w_k / eta`, so slope `-> -1`.
+
+Read that way, the measured 0.54-0.68 is not merely "no plateau": it says
+`A_J(omega) ~ omega^{0.5..0.7}` over the accessible window — the current's
+spectral density is *vanishing* as `omega -> 0`, not approaching a
+constant. Taken literally that is `D = 0`, a subdiffusive or insulating
+chain. It cannot be taken literally, because the window bottoms out at the
+level spacing, and a discrete spectrum has no weight at small `omega` for
+the trivial reason that it has no *modes* there.
+
+Disentangling those two is the measurement worth making, and it needs no
+new machinery — only a different view of weights already computed:
+
+1. **Bin `A_J(omega)` directly** against `omega`, with bins wider than the
+   level spacing, and look at the shape rather than at one number. Whether
+   `A_J` bends over to a constant, keeps falling as a power, or has a dip
+   is visible there and invisible in `D(eta)`.
+2. **Check the exponent against `L` and `D` separately.** A finite-size gap
+   should fill in as the spacing shrinks (so the exponent should fall
+   toward 0 with either knob); genuine subdiffusion should not.
+3. **Cross-check on the density.** A diffusive system has a `t^{-1/2}`
+   tail in the energy-density correlator above its Mazur floor, i.e.
+   `A_h(omega) ~ |omega|^{-1/2}`. That is a *divergence*, so it is much
+   easier to see than a flat `A_J`, and it is an independent route to the
+   same answer. Fitting the time-domain tail for it gave slopes -0.05 to
+   -0.63 against the predicted -0.5 (R^2 0.21-0.44) — inconclusive,
+   because the tail oscillates about its envelope and the fit fights the
+   oscillation. Frequency space has no such problem.
+
+This is why the spectral route is preferred over repairing the time-domain
+fit. The oscillations that wreck an exponential fit are just the beating of
+discrete `omega_k`; binning resolves them instead of fighting them, there
+is no model to choose and no window to tune, and the finite-size limit is
+explicit — nothing below the level spacing is knowable, and that shows up
+as the edge of the plot rather than as a plausible number.
 
 ## Code
 
@@ -423,10 +643,27 @@ environments) and come out exact conjugate transposes.
   whole response is built from. With the kick and the measured observable
   both equal to O, the weights are `|u_k|^2` with `u = U† v`: manifestly
   non-negative, so A_O(ω) is a genuine spectral density.
+- `single_copy_total_current(sites)` — `J_tot = sum_l j_l` as a single
+  bond-dimension-4 finite-state machine, needed because Green–Kubo is a
+  statement about the total current (see that section).
+- `single_copy_hamiltonian(sites)` — `H ⊗ I_aux`, which
+  `thermofield.thermofield_hamiltonian` does not provide on its own.
+- `static_variance(psi, O)` / `static_susceptibility(psi, sites)` — exact
+  `Var(O)` from MPO algebra: the Green–Kubo denominator, and the yardstick
+  for the tangent capture ratio `sum_k w_k / Var(O)`.
+- `green_kubo_integral(omega, weights, times)` — the running `I(t)` in
+  closed form; `green_kubo_broadened(omega, weights, eta)` — the
+  Lorentzian-regulated `I(eta)`, which is the estimator to trust.
+- `broadening_window`, `diffusion_constant` — the admissible `eta` range
+  and the flatness test over it.
 - `timescales` — the `t_zeno << t << t_heis` window bounds, from the
   weighted spectrum rather than the raw dimension (modes carrying no
   overlap cannot dephase anything).
-- `fit_relaxation_time`, `crossing_time` — rate extraction.
+- `conserved_fraction(omega, weights)` — `C(inf)`, the weight on exact zero
+  modes, which is the Mazur floor for an observable overlapping a conserved
+  quantity; `dephasing_response(C, c_inf)` rescales it away.
+- `fit_relaxation_time`, `crossing_time` — rate extraction, both taking
+  `c_inf` so they measure against the right asymptote.
 
 `run_relaxation_scan.py` — the L scan driver. Also computes
 `||P H_asym psi*||` as a fixed-point diagnostic, which is free: it is
@@ -478,8 +715,8 @@ Not yet written: the wavevector-resolved energy density needed to turn
 4. **Nothing relaxes yet at L=8, D=8** (from the `plots.py` figures, seed 0;
    `z_mid` has since been dropped from the default scan, so this is a
    record), and the fitted τ values shouldn't be read as rates. `z_mid`:
-   C(t) levels
-   off at ~0.2–0.25 and stays there past t_heis, so τ_fit ≈ 9 describes the
+   C(t) levels off at ~0.2–0.25 and stays there past t_heis, so τ_fit ≈ 9
+   describes the
    approach to a plateau. `energy_mid`: C(t) crosses zero at t ≈ 2.3 and
    then oscillates between 0 and ~0.3 indefinitely. τ_fit = 0.36
    (R² = 0.96) disagrees with τ_1/e = 1.18 because the fit window closes
@@ -487,6 +724,24 @@ Not yet written: the wavevector-resolved energy density needed to turn
    ω ∈ [−2, 2], comb-like, n_eff = 53 of 959 modes. That is much narrower
    than both the DOS and the implied Lorentzian (HWHM 2.75), which points
    to the discrete-spectrum obstruction above rather than a slow rate. The
-   running τ(t) never plateaus for either observable. Whether larger D
-   densifies the weighted spectrum enough (the feasibility estimate says D,
-   not N, is the lever) is the next thing to check.
+   running τ(t) never plateaus for either observable.
+
+   *Partly settled since.* D **is** the lever: the tangent dimension goes
+   as ~39 D² at L = 16, and `n_eff` for the total current rises 27 → 322
+   over D = 6–12 where the whole L = 4–16 scan bought only 29 → 115. The
+   `energy_mid` τ discrepancy was also part floor: subtracting `C_inf`
+   moved τ_fit from 11.7 (R² = 0.06) to 0.42 (R² = 0.97) at L = 8, and
+   τ_1/e is now flat in bond dimension (1.401 / 1.408 / 1.395 / 1.400 at
+   D = 6/8/10/12). What is *not* settled is the fit window, which still
+   sits inside the plunge to the first zero — so τ_fit ≈ 0.4 remains the
+   Zeno-shoulder slope and the high R² is a good fit to a transient. See
+   the spectral-density section for why that is better attacked in
+   frequency space than by retuning the window.
+
+5. **Is `A_J(ω) → 0` physical, or a finite-size gap?** The measured
+   `d log D/d log η` = 0.54–0.68 says the current's spectral density
+   vanishes as `ω^0.5..0.7` over the accessible window, which taken
+   literally means `D = 0`. Binning `A_J(ω)` directly and watching the
+   exponent against `L` and `D` separately is the way to tell; the
+   `|ω|^(−1/2)` divergence in the density correlator is the easier
+   independent route to the same answer. See "The spectral-density limit".
