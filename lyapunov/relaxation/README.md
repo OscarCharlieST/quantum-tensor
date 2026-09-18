@@ -543,6 +543,63 @@ work on `dephasing_response(C, c_inf) = (C - C_inf)/(1 - C_inf)`; the
 decomposition `C = C_inf + (1 - C_inf) C~` is exact, and only `C~` has a
 relaxation time.
 
+### Why the fit window is what it is (2026-09-18)
+
+`fit_relaxation_time` takes `[t_zeno, t_end]` with
+
+    t_end = min( t_max, 3 * t_1/e, last time above `floor`, 1/spacing )
+
+and the last two both changed once the energy density was looked at
+properly.
+
+**The floor cut is on the last time above the floor, not the first time
+below.** These coincide for a monotone decay and not otherwise. `C~` for
+`energy_mid` plunges to ~1e-3 at its first zero and then *recovers to 0.3*
+before decaying slowly, so "first crossing below 0.05" was stopping at the
+first zero of an oscillation and discarding everything after it. At L = 16
+that cut the window at t = 2.1 out of a 700-long trace.
+
+**Nothing slower than `1/spacing` is resolvable, and the code now refuses
+it.** An exponential of rate `Gamma = 1/tau` is a Lorentzian of width
+`Gamma`; resolving it needs modes inside that width, and the count is
+`Gamma/spacing = 1/(tau*spacing)`. This is *2 pi tighter than `t_heis`*,
+which `timescales` defines as `2 pi/spacing` — so passing `t_max = t_heis`
+alone permits fits four times slower than the spectrum can resolve.
+
+That matters because the full trace does show a slow tail, and it is
+tempting to fit it. Fitting the envelope of `C~` over `[t_recovery,
+t_heis]` gives:
+
+| D (at L = 16) | t_heis | 1/spacing | tau_envelope | modes per linewidth |
+|---|---|---|---|---|
+| 6 | 155.6 | 24.8 | 108.8 | 0.23 |
+| 8 | 176.0 | 28.0 | 218.9 | 0.13 |
+| 10 | 214.5 | 34.1 | 283.8 | 0.12 |
+| 12 | 233.3 | 37.1 | 127.6 | 0.29 |
+
+Every one of those has **less than one mode per linewidth**, so none is a
+lineshape — it is the beating of a handful of discrete levels. The proof
+is in the scatter: L and the physics are fixed across that table, only the
+box changes, and the answer moves by a factor of 2.6 without a trend.
+Restricting to the genuinely resolvable window `[t_recovery, 1/spacing]`
+does not rescue it either — only 5–8 envelope peaks fit inside, and tau
+still scatters 28 / 32 / 85 / 67.
+
+So the window is small because the resolvable window *is* small, and the
+O(100) tail is not being ignored by oversight: it is below the resolution
+of the spectrum that produced it.
+
+**Consequences for the reported numbers.** With the floor cut fixed, the
+`energy_mid` window at L = 16 runs to t = 4.2 instead of 2.1, takes in the
+recovery as well as the plunge, and honestly reports that one exponential
+does not describe it: R² falls from 0.90 to 0.07. That is the right
+outcome. The currents are unaffected — their windows extend too, but the
+extra samples have `C < 0` and are already excluded, so tau and R² are
+unchanged to three digits (`current_mid` 0.320 at R² = 0.933,
+`current_total` 0.681 at R² = 0.857 at L = 16). Their taus, ~0.3–0.7
+against a limit `1/spacing` of ~46, are resolvable by two orders of
+magnitude, which is why they were never the problem.
+
 ### The spectral-density limit: what to measure next
 
 Everything above is one statement about the spectral density
@@ -664,6 +721,9 @@ environments) and come out exact conjugate transposes.
   quantity; `dephasing_response(C, c_inf)` rescales it away.
 - `fit_relaxation_time`, `crossing_time` — rate extraction, both taking
   `c_inf` so they measure against the right asymptote.
+  `fit_relaxation_time` also takes `spacing` and refuses any τ beyond
+  `1/spacing` as unresolvable, reporting the rejected window in
+  `t_fit_end` so it stays visible.
 
 `run_relaxation_scan.py` — the L scan driver. Also computes
 `||P H_asym psi*||` as a fixed-point diagnostic, which is free: it is
@@ -728,15 +788,18 @@ Not yet written: the wavevector-resolved energy density needed to turn
 
    *Partly settled since.* D **is** the lever: the tangent dimension goes
    as ~39 D² at L = 16, and `n_eff` for the total current rises 27 → 322
-   over D = 6–12 where the whole L = 4–16 scan bought only 29 → 115. The
-   `energy_mid` τ discrepancy was also part floor: subtracting `C_inf`
-   moved τ_fit from 11.7 (R² = 0.06) to 0.42 (R² = 0.97) at L = 8, and
-   τ_1/e is now flat in bond dimension (1.401 / 1.408 / 1.395 / 1.400 at
-   D = 6/8/10/12). What is *not* settled is the fit window, which still
-   sits inside the plunge to the first zero — so τ_fit ≈ 0.4 remains the
-   Zeno-shoulder slope and the high R² is a good fit to a transient. See
-   the spectral-density section for why that is better attacked in
-   frequency space than by retuning the window.
+   over D = 6–12 where the whole L = 4–16 scan bought only 29 → 115. τ_1/e
+   for `energy_mid` is now flat in bond dimension (1.401 / 1.408 / 1.395 /
+   1.400 at D = 6/8/10/12).
+
+   The exponential fit, though, is settled the other way: **there is no
+   exponential regime for `energy_mid` and the code now says so.** See
+   "Why the fit window is what it is" below. The intermediate claim that
+   subtracting `C_inf` rescued it (τ_fit 11.7 → 0.42, R² 0.06 → 0.97) was
+   an artefact of a window that stopped at the first zero; with that fixed
+   the same fit reads τ = 2.8 at R² = 0.05. The floor subtraction was still
+   right — it is what makes τ_1/e converge — but it did not make the energy
+   density relax.
 
 5. **Is `A_J(ω) → 0` physical, or a finite-size gap?** The measured
    `d log D/d log η` = 0.54–0.68 says the current's spectral density

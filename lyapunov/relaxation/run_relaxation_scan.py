@@ -172,7 +172,8 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
         # L = 8 and 0.074 at L = 16.
         c_inf = resp.conserved_fraction(omega, weights)
         tau_fit, r_squared, t_fit_end = resp.fit_relaxation_time(
-            times, C_t, scales['t_zeno'], scales['t_heis'], c_inf=c_inf
+            times, C_t, scales['t_zeno'], scales['t_heis'], c_inf=c_inf,
+            spacing=scales['spacing']
         )
         result['observables'][name] = {
             'weights': weights,

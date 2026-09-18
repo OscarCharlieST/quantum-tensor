@@ -572,7 +572,8 @@ def dephasing_response(C, c_inf):
     return (np.asarray(C, dtype=float) - c_inf) / (1.0 - c_inf)
 
 
-def fit_relaxation_time(times, C, t_min, t_max, floor=0.05, c_inf=0.0):
+def fit_relaxation_time(times, C, t_min, t_max, floor=0.05, c_inf=0.0,
+                        spacing=None):
     """
     Fit C(t) ~ exp(-t/tau) by least squares on log C, over the window from
     t_min up to whichever comes first: t_max, or the time C first drops
@@ -587,11 +588,29 @@ def fit_relaxation_time(times, C, t_min, t_max, floor=0.05, c_inf=0.0):
     on dephasing_response(C, c_inf), since an observable overlapping a
     conserved quantity decays to that floor rather than to zero. Note
     `floor` is a different thing -- the level below which the trace is
-    oscillating noise and the fit window closes.
+    noise and the fit window closes.
 
-    Returns (tau, r_squared, t_fit_end), all nan if there is no usable
-    window -- which is itself the answer when the system is too small to
-    have an exponential regime.
+    `spacing` is the weighted level spacing from timescales(), and it is
+    the hard limit on what any time-domain fit can say. An exponential of
+    rate Gamma = 1/tau is a Lorentzian of width Gamma, and resolving it
+    needs modes inside that width: the count is Gamma/spacing =
+    1/(tau*spacing). Once tau exceeds 1/spacing there is less than one mode
+    per linewidth, and what looks like a decaying tail is the beating of a
+    handful of discrete levels rather than a lineshape. Measured on
+    energy_mid at L=16, D=8: the envelope tail fits tau ~ 219 against
+    1/spacing = 28, i.e. 0.13 modes per linewidth -- and the fitted value
+    then moves 109 -> 219 -> 284 -> 128 across D = 6..12, a factor 2.6 with
+    the physics held fixed and only the box changing. So `spacing` both
+    caps the window at 1/spacing and rejects any tau beyond it.
+
+    Note this limit is *tighter than t_heis by 2*pi*, since timescales
+    defines t_heis = 2*pi/spacing. Passing t_max = t_heis alone permits
+    fits four times slower than the spectrum can resolve.
+
+    Returns (tau, r_squared, t_fit_end); tau and r_squared are nan when
+    there is no usable window or the result is unresolvable, with t_fit_end
+    still reported so the rejected window can be seen. That is itself the
+    answer when the system is too small to have an exponential regime.
     """
     C = dephasing_response(C, c_inf)
     # The fit has to be confined to the part that actually decays. Two
@@ -603,9 +622,20 @@ def fit_relaxation_time(times, C, t_min, t_max, floor=0.05, c_inf=0.0):
     if not reached_e.size:
         return np.nan, np.nan, np.nan
     t_end = min(t_max, 3.0 * times[reached_e[0]])
-    reached_floor = np.flatnonzero(C < floor)
-    if reached_floor.size:
-        t_end = min(t_end, times[reached_floor[0]])
+
+    # The floor cut is on the *last* time the trace is above it, not the
+    # first time below. These coincide for a monotone decay, but not for an
+    # oscillating one: energy_mid plunges to ~1e-3 at its first zero and
+    # then recovers to 0.3, so "first crossing below floor" stopped at the
+    # first zero of an oscillation and threw away everything after it.
+    above = np.flatnonzero(C > floor)
+    if not above.size:
+        return np.nan, np.nan, np.nan
+    t_end = min(t_end, times[above[-1]])
+
+    # Nothing slower than one mode per linewidth is resolvable; see above.
+    limit = (1.0 / spacing) if spacing else np.inf
+    t_end = min(t_end, limit)
 
     window = (times >= t_min) & (times <= t_end) & (C > 0)
     if window.sum() < 5:
@@ -613,10 +643,14 @@ def fit_relaxation_time(times, C, t_min, t_max, floor=0.05, c_inf=0.0):
     t, y = times[window], np.log(C[window])
     slope, intercept = np.polyfit(t, y, 1)
     if slope >= 0:
-        return np.nan, np.nan, np.nan
+        return np.nan, np.nan, t_end
+    tau = -1.0 / slope
+    if tau > limit:
+        # Resolvable windows can still produce unresolvable answers.
+        return np.nan, np.nan, t_end
     residual = y - (slope * t + intercept)
     r_squared = 1 - np.sum(residual ** 2) / np.sum((y - y.mean()) ** 2)
-    return -1.0 / slope, r_squared, t_end
+    return tau, r_squared, t_end
 
 
 def crossing_time(times, C, level=1.0 / np.e, c_inf=0.0):
