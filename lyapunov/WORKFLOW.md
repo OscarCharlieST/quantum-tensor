@@ -87,10 +87,14 @@ exponential fits are unreliable here — see below):
 
 | observable | L=8 | L=12 | L=16 |
 |---|---|---|---|
-| `z_mid` | 2.050 | 2.131 | 2.189 |
-| `x_mid` | 0.479 | 0.501 | 0.480 |
-| `energy_mid` | 1.494 | 1.531 | 1.484 |
-| `current_mid` | 0.973 | 0.974 | 0.958 |
+| `z_mid`* | 2.050 | 2.131 | 2.189 |
+| `x_mid`* | 0.479 | 0.501 | 0.480 |
+| `energy_mid` | 1.325 | 1.380 | 1.431 |
+| `current_mid` | 0.925 | 0.957 | 0.957 |
+
+\* `z_mid`/`x_mid` are the original values on the old coarse time grid —
+they were dropped from the scan before the grid was fixed, so there are no
+weights stored to recompute them from. The other two rows are recomputed.
 
 Tangent dimensions 959 / 1727 / 2495; everything agrees to ~2% across
 the three.
@@ -101,7 +105,7 @@ the rows above are a record rather than something the current code
 reproduces. `response.single_copy_onesite` still builds them; see the
 commented lines in `run_relaxation_scan.run_one`.
 
-- **τ(current) ≈ 0.96, independent of L** — the number the current operator
+- **τ(current) ≈ 0.95, independent of L** — the number the current operator
   was added for. Microscopic, as a current relaxation time must be, and two
   to three orders below the `L²/D` profile time. **The wait before
   transport can look diffusive is not the obstacle.**
@@ -110,7 +114,7 @@ commented lines in `run_relaxation_scan.run_one`.
   mode carrying ~9% on its own), current 0.019 (0.24x chance, bimodal with
   peaks at ω ≈ ±1). Conserved density has the low-frequency pole, its
   current does not — the precondition for a finite Green–Kubo `D`.
-- **τ(energy)/τ(current) ≈ 1.55 is NOT a hydrodynamic separation.** Both are
+- **τ(energy)/τ(current) ≈ 1.45 is NOT a hydrodynamic separation.** Both are
   *local* dephasing times at the fixed point; both are flat in L, whereas a
   hydrodynamic time grows like L². Do not read that ratio as gating
   diffusion.

@@ -44,7 +44,26 @@ L_VALUES = [8, 12, 16]
 IMAG_STEPS = 240                        # TDVP steps for the imaginary-time build
 SEED_NOISE = 0.0                        # none needed, see build_uniform_thermofield
 T_MAX_FACTOR = 3.0                      # response evaluated to this * t_heis
-N_TIMES = 6000
+N_TIMES = 6000                          # floor on the sample count
+SAMPLES_PER_ZENO = 20                   # ceiling on dt, see response_times
+MAX_TIMES = 400_000                      # cap, ~3 MB transient per observable
+
+
+def response_times(scales):
+    """
+    Sample grid for C(t): spans T_MAX_FACTOR * t_heis, but with dt small
+    enough to resolve t_zeno.
+
+    A fixed sample count cannot do both. t_heis = 2 pi / spacing grows as
+    the spectrum gets finer, so at fixed N_TIMES the step dt grows with it
+    and the *better* calculation gets the *worse* time resolution -- at
+    L = 24, D = 16 that had reached 1.2 samples per Zeno time, enough to
+    quantise tau_1/e onto the grid. The response is no longer stored
+    (see `run_one`), so a fine grid costs only transient memory.
+    """
+    t_max = T_MAX_FACTOR * scales['t_heis']
+    n_needed = int(np.ceil(t_max / (scales['t_zeno'] / SAMPLES_PER_ZENO))) + 1
+    return np.linspace(0, t_max, min(max(N_TIMES, n_needed), MAX_TIMES))
 
 D_VALUES = [6, 8, 10, 12]               # bond-dimension scan, at L_FIXED
 L_FIXED = 16
@@ -189,7 +208,7 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS, store_response=False):
         W = resp.pad_with_identity(O, sites)
         weights = resp.spectral_weights(omega, U, v)
         scales = resp.timescales(omega, weights)
-        times = np.linspace(0, T_MAX_FACTOR * scales['t_heis'], N_TIMES)
+        times = response_times(scales)
         C_t = resp.response_function(omega, weights, times)
         # An observable overlapping a conserved quantity relaxes to that
         # overlap, not to zero; both estimates below are taken on the part
@@ -211,7 +230,7 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS, store_response=False):
             # question in its cleanest form: A_J(0) finite means diffusive,
             # A_h ~ |w|^-1/2 is the same statement seen from the density.
             'spectral': resp.spectral_exponent(omega, weights, scales),
-            'n_times': N_TIMES,
+            'n_times': len(times),
             't_max': float(times[-1]),
             'tau_cross': resp.crossing_time(times, C_t, c_inf=c_inf),
             **({'times': times, 'response': C_t} if store_response else {}),
@@ -281,8 +300,11 @@ def main(l_values=L_VALUES, d_value=None, out_path=None):
               f"L={L} took {clock.time() - t0:.0f}s]", flush=True)
 
     with open(out_path, 'wb') as f:
+        # d_value, not D: this final write overwrites the incremental ones,
+        # and the module default here silently mislabels the config of
+        # every run launched with --D (it did, for l24_d16_results.pkl).
         pickle.dump({'config': {'J': J, 'h': H_FIELD, 'g': G_FIELD,
-                                'beta': BETA, 'D': D,
+                                'beta': BETA, 'D': d_value or D,
                                 'imag_steps': IMAG_STEPS,
                                 'seed_noise': SEED_NOISE},
                      'results': results}, f)

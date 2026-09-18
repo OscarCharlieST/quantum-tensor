@@ -392,11 +392,16 @@ Scan: `L = 8, 12, 16`, `D = 8`, `β = 0.1`, seed 0. Figures
 
 | L | τ(current) | τ(energy) | ratio | current `n_eff` | energy `n_eff` |
 |---|---|---|---|---|---|
-| 8 | 0.973 | 1.494 | 1.54 | 177 | 40 |
-| 12 | 0.974 | 1.531 | 1.57 | 324 | 76 |
-| 16 | 0.958 | 1.484 | 1.55 | 383 | 116 |
+| 8 | 0.925 | 1.325 | 1.43 | 177 | 40 |
+| 12 | 0.957 | 1.380 | 1.44 | 324 | 76 |
+| 16 | 0.957 | 1.431 | 1.50 | 383 | 116 |
 
-**1. τ(current) ≈ 0.96 and does not depend on L.** Flat to 2% over
+(Recomputed 2026-09-18 on the adaptive time grid — see "The time grid must
+resolve t_zeno". The previous values, 0.973/0.974/0.958 and
+1.494/1.531/1.484, were read off a grid too coarse to resolve the
+crossing.)
+
+**1. τ(current) ≈ 0.95 and does not depend on L.** Flat to 3% over
 L = 8–16, well converged, and sitting inside its `[t_zeno, t_heis]`
 window. This is the number the exercise was for: it is *microscopic*, as a
 current relaxation time must be. Against a profile-change time `L²/D` of
@@ -652,6 +657,43 @@ unchanged to three digits (`current_mid` 0.320 at R² = 0.933,
 `current_total` 0.681 at R² = 0.857 at L = 16). Their taus, ~0.3–0.7
 against a limit `1/spacing` of ~46, are resolvable by two orders of
 magnitude, which is why they were never the problem.
+
+### The time grid must resolve t_zeno (2026-09-18)
+
+`times = linspace(0, 3 * t_heis, N_TIMES)` at fixed `N_TIMES` has a step
+`dt = 3 t_heis / N_TIMES`, and `t_heis = 2 pi / spacing` **grows** as the
+spectrum gets finer. So every improvement to the calculation made the time
+resolution worse — the failure mode arrives exactly when the physics gets
+better. At L = 24, D = 16 it had reached 1.2 samples per Zeno time for the
+total current and 0.7 for the local one, and `current_mid` returned
+`tau_1/e = 0.968`, which was precisely one `dt`: the crossing had been
+quantised onto the grid.
+
+`response_times(scales)` now spans `3 t_heis` with `dt <= t_zeno / 20`,
+capped at 400k samples. This costs nothing to store, because the trace is
+not stored (see `run_one`'s `store_response`) — only `n_times` and `t_max`
+are, and `plots._response_of` rebuilds it. `response_function` is chunked
+over `times` for the same reason: the natural one-shot expression builds a
+dense `(len(times), len(omega))` matrix, which at L = 24, D = 16 is
+182166 x 15615, i.e. **21 GB to produce 182166 numbers**.
+
+**What it changed.** Every `tau` in this file was recomputed from the
+stored `omega` and `weights` — no diagonalization was repeated. The
+corrected values are *flatter*, not just different:
+
+| | before (coarse grid) | after |
+|---|---|---|
+| `energy_mid`, D = 6…16 at L = 16 | 1.401, 1.408, 1.395, 1.400, 1.498 | **1.431 at every D** |
+| `current_mid`, D = 6…16 at L = 16 | 0.997 … 1.328 | **0.925–0.957** |
+| `current_mid`, all 11 runs | 0.95–1.33 | **0.925–0.957** |
+
+The apparent drift of `tau` with bond dimension — which had looked like the
+manifold slowly resolving a rate — **was the time grid**. Once sampled
+properly, `tau_1/e` is flat in D to within 3% and creeps up only with L
+(`energy_mid`: 1.325, 1.380, 1.431 at L = 8, 12, 16). The exponential fits
+remain unreliable (`R^2 < 0.9` in 8 of 11 runs for `energy_mid`), which is
+the separate and still-standing conclusion that there is no exponential
+regime here.
 
 ### The spectral-density limit: why it is the right object
 
@@ -1054,7 +1096,9 @@ Not yet written: the wavevector-resolved energy density needed to turn
    running τ(t) never plateaus for either observable.
 
    *Partly settled since.* τ_1/e for `energy_mid` is flat in bond
-   dimension (1.401 / 1.408 / 1.395 / 1.400 at D = 6/8/10/12). Which of L
+   dimension — 1.431 at every D from 6 to 16, once the time grid resolves
+   `t_zeno` (the old 1.401/1.408/1.395/1.400/1.498 spread was the grid, not
+   the manifold; see "The time grid must resolve t_zeno"). Which of L
    and D buys resolution is answered in "Cost and convergence": neither —
    they cost the same per unit of level spacing, and D saturates at 16.
 

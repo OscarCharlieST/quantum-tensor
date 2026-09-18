@@ -324,15 +324,28 @@ def spectral_weights(omega, U, v):
     return np.abs(u) ** 2
 
 
-def response_function(omega, weights, times):
+def response_function(omega, weights, times, chunk=4096):
     """
     C(t) = sum_k w_k cos(omega_k t), normalized to C(0) = 1.
 
     This is the entire time trace, for any t, from one diagonalization --
     no time stepping. Evaluate it well past the expected relaxation time to
     see the recurrences.
+
+    Chunked over `times` because the natural expression builds a dense
+    (len(times), len(omega)) matrix before contracting it away: at L = 24,
+    D = 16 with a grid fine enough to resolve t_zeno that is 182166 x 15615,
+    i.e. 21 GB, to produce 182166 numbers. The chunked loop is the same
+    arithmetic in 0.5 GB.
     """
-    return (np.cos(np.outer(times, omega)) @ weights) / weights.sum()
+    times = np.asarray(times, dtype=float)
+    omega = np.asarray(omega)
+    total = weights.sum()
+    out = np.empty(times.shape[0], dtype=float)
+    for i in range(0, times.shape[0], chunk):
+        block = times[i:i + chunk]
+        out[i:i + chunk] = np.cos(np.outer(block, omega)) @ weights
+    return out / total
 
 
 # --------------------------------------------------------------- timescales
