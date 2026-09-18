@@ -600,7 +600,7 @@ unchanged to three digits (`current_mid` 0.320 at R² = 0.933,
 against a limit `1/spacing` of ~46, are resolvable by two orders of
 magnitude, which is why they were never the problem.
 
-### The spectral-density limit: what to measure next
+### The spectral-density limit: why it is the right object
 
 Everything above is one statement about the spectral density
 `A_O(omega) = sum_k w_k delta(omega - omega_k)`, and saying it that way is
@@ -652,10 +652,87 @@ new machinery — only a different view of weights already computed:
 
 This is why the spectral route is preferred over repairing the time-domain
 fit. The oscillations that wreck an exponential fit are just the beating of
-discrete `omega_k`; binning resolves them instead of fighting them, there
+discrete `omega_k`; smoothing resolves them instead of fighting them, there
 is no model to choose and no window to tune, and the finite-size limit is
 explicit — nothing below the level spacing is knowable, and that shows up
 as the edge of the plot rather than as a plausible number.
+
+### Measured (2026-09-18): D_peak is a ~10x overestimate
+
+`spectral_density` and `spectral_exponent` do it. Figures
+`figures/L16_spectral_density.png` (bond scan) and
+`figures/D8_spectral_density.png` (L scan).
+
+**Two things had to be got right first, and neither is cosmetic.**
+
+*The kernel must be Gaussian, not Lorentzian.* A Lorentzian has `w^-2`
+tails, so the current's band weight around `w ~ 0.5` leaks down into
+`w ~ 0.05` as `~ W eta / w^2`. The tell is `A(w)` coming out proportional
+to the width at fixed `w`, and that is exactly what happens: `A/eta` = 55,
+53, 68 at D = 8, 10, 12, i.e. the entire apparent low-frequency signal was
+the kernel's own tails. A Gaussian leaks `exp(-w^2/2 s^2)`. (The Lorentzian
+is still correct for Green-Kubo, where it is not a kernel choice but the
+physical broadening of `int e^{-eta t} C dt`; `green_kubo_broadened`
+satisfies `A_lorentzian(0; eta) = (2/pi) I(eta)` to machine precision.)
+
+*Exact zero modes must be dropped.* They are a delta, not continuum. For
+the energy density the Mazur weight is large enough to leak into the
+low-frequency region and bias the exponent **negative** — the direction
+that makes a non-diffusive system look diffusive. Dropping it moves the
+exponent by +0.08.
+
+**Result, L = 16:**
+
+| D | w_min | exponent | weight below w_min | D from A_J | D_peak |
+|---|---|---|---|---|---|
+| 6 | 0.430 | −0.05 | 0.234 | 0.853 | 0.448 |
+| 8 | 0.100 | +0.67 | 0.0088 | 0.359 | 0.445 |
+| 10 | 0.062 | +1.39 | 0.0032 | 0.064 | 0.457 |
+| 12 | 0.036 | +1.41 | 0.0024 | 0.054 | 0.465 |
+
+`D from A_J` is `(pi/2) A_J(w_min)/Var(H)`. It collapses as the resolution
+improves — 0.85, 0.36, 0.064, 0.054 — while `D_peak` sits at 0.45
+throughout. **The Green-Kubo crossover estimate is an overestimate of
+roughly an order of magnitude**, which is what "read outside its own
+validity window" was always going to mean.
+
+**A weight-budget argument makes that kernel-independent.** For
+`D_peak = 0.465` you need `A_J(0) = 2 D chi/pi = 5.80`, which would put
+`5.80 * 0.0357 / 8.15 = 2.5%` of the current's weight below `w_min`. The
+measured figure is **0.24%**, ten times less — a count of modes in an
+interval, no smoothing anywhere. Taking `A_J` non-decreasing on
+`[0, w_min]`, which the `w^1.4` fit supports, gives `A_J(0) <=
+weight_below * Var(J)/w_min` and hence **D <= 0.045 at L = 16, D = 12**.
+
+**The two observables disagree, and the diagnostics say why.**
+
+| | current | density |
+|---|---|---|
+| exponent at D = 10, 12 | +1.39, +1.41 | −0.42, −0.56 |
+| diffusive value | 0 | −1/2 |
+| verdict | vanishing: `D -> 0` | looks diffusive |
+| weight below `w_min` | 0.24% | **26%** |
+
+The current says `A_J -> 0`, i.e. `D = 0`; the density says
+`A_h ~ w^-1/2`, i.e. `D > 0`. They cannot both be right, and the last row
+is the reason to distrust the density: a quarter of its weight lies below
+its own resolution limit, so that exponent is fitted on the shoulder of an
+unresolved pile-up. That is also exactly where the hydrodynamic modes are
+— the slowest diffusive mode sits at `D (2 pi/L)^2 ~ 0.07` at L = 16,
+against `w_min = 0.108`. **We are a factor of ~1.5 in resolution away from
+seeing the slowest hydrodynamic mode at all**, which is the sharpest
+statement of what is missing.
+
+The current, by contrast, has only 0.24% of its weight unresolved, so its
+`w^1.4` is measured rather than extrapolated. Taken at face value it says
+this chain is subdiffusive or insulating at beta = 0.1. Taken carefully it
+says `A_J(0) < 0.55`, and whether that is zero or merely small is the
+question one more decade of resolution would settle.
+
+**What would settle it.** Reaching `w_min < 0.07` for the *density* needs
+its spacing down by ~1.5x, i.e. `n_eff` up by ~1.5x at fixed L — within
+reach of D = 16-20 at L = 16, since `n_eff` for the density went 97 → 145
+over D = 6–12. That is the cheapest decisive experiment left.
 
 ## Code
 
@@ -713,6 +790,11 @@ environments) and come out exact conjugate transposes.
   Lorentzian-regulated `I(eta)`, which is the estimator to trust.
 - `broadening_window`, `diffusion_constant` — the admissible `eta` range
   and the flatness test over it.
+- `spectral_density(omega, weights, omega_eval, width)` — the one-sided
+  `A(w)`, Gaussian-smoothed (see above for why not Lorentzian), with exact
+  zero modes dropped. `spectral_exponent` fits `d log A/d log w` over the
+  resolvable range and reports how much weight lies below it, which is the
+  diagnostic that says whether the exponent is measured or extrapolated.
 - `timescales` — the `t_zeno << t << t_heis` window bounds, from the
   weighted spectrum rather than the raw dimension (modes carrying no
   overlap cannot dephase anything).
@@ -801,10 +883,12 @@ Not yet written: the wavevector-resolved energy density needed to turn
    right — it is what makes τ_1/e converge — but it did not make the energy
    density relax.
 
-5. **Is `A_J(ω) → 0` physical, or a finite-size gap?** The measured
-   `d log D/d log η` = 0.54–0.68 says the current's spectral density
-   vanishes as `ω^0.5..0.7` over the accessible window, which taken
-   literally means `D = 0`. Binning `A_J(ω)` directly and watching the
-   exponent against `L` and `D` separately is the way to tell; the
-   `|ω|^(−1/2)` divergence in the density correlator is the easier
-   independent route to the same answer. See "The spectral-density limit".
+5. **Is `A_J(ω) → 0` physical, or a finite-size gap?** Measured directly:
+   `A_J ~ ω^1.41` at L = 16, D = 12, with only 0.24% of the weight below
+   the resolution limit, so it is measured rather than extrapolated — and
+   it bounds `D ≤ 0.045`, an order of magnitude under the Green–Kubo
+   crossover estimate. The density disagrees (`ω^−0.56`, the diffusive
+   value) but has **26%** of its weight unresolved, right where the slowest
+   hydrodynamic mode sits (`D(2π/L)² ≈ 0.07` against `ω_min = 0.108`).
+   Resolving that is the cheapest decisive experiment left: D = 16–20 at
+   L = 16 should do it. See "Measured (2026-09-18)".

@@ -744,6 +744,127 @@ def green_kubo_from_results(results, name='current_total', key=None,
     return fig, axes, path
 
 
+# ------------------------------------------------------ spectral density
+
+def plot_spectral_density(results, key='L', axes=None, title=None,
+                          names=('current_total', 'energy_mid')):
+    """
+    A_O(omega) at low frequency, which is the diffusion question in the form
+    that needs no fitting.
+
+    Three panels:
+
+    1. A_J(omega) for the total current. Diffusive means this approaches a
+       finite constant, and `D = (pi/2) A_J(0) / Var(H)`. The dashed line
+       is the value A_J(0) would have to take for the Green-Kubo crossover
+       estimate `D_peak` to be right; each curve stops at its own
+       resolution limit `omega_min = 2 * width`, marked, below which there
+       is simply no information.
+    2. A_h(omega) for the energy density, where diffusion predicts a
+       |omega|^(-1/2) divergence (guide line). A divergence is easier to
+       see than a constant, so this is the better-conditioned of the two
+       measurements -- except that a quarter of the density's weight sits
+       below the resolution limit, which is where the hydrodynamic modes
+       are: the slowest is at D (2 pi/L)^2 ~ 0.07 at L = 16.
+    3. The fitted exponents against L or D, with the two diffusive
+       references (0 for the current, -1/2 for the density).
+    """
+    if axes is None:
+        fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.2))
+    else:
+        fig = axes[0].figure
+    ax_j, ax_h, ax_e = axes
+
+    n = len(results)
+    exps = {nm: [] for nm in names}
+    keys = []
+    for i, r in enumerate(results):
+        colour, marker = _L_style(i, n)
+        keys.append(r[key])
+        for nm, ax in zip(names, (ax_j, ax_h)):
+            o = r['observables'][nm]
+            sp = resp.spectral_exponent(r['omega'], o['weights'], o['scales'])
+            exps[nm].append(sp['exponent'])
+            if not sp['A'].size:
+                continue
+            lbl = r'$%s=%d$  ($s=%.3f$)' % (
+                KEY_LABELS.get(key, key), r[key], sp['exponent'])
+            ax.loglog(sp['omega'], sp['A'], lw=1.8, color=colour, label=lbl)
+            ax.plot(sp['omega'][0], sp['A'][0], marker=marker, ms=8,
+                    color=colour, mec='white', mew=1.2, ls='none', zorder=5)
+
+    # what D_peak would demand of A_J(0)
+    last = results[-1]
+    need = 2 * last['green_kubo']['D_peak'] * last['chi'] / np.pi
+    ax_j.axhline(need, color=C_MODEL, lw=1.6, ls='--',
+                 label=r'$A_J(0)$ needed for $D_{\rm peak}=%.2f$'
+                       % last['green_kubo']['D_peak'])
+    ax_j.set_title('a.  current: flat and finite = diffusive',
+                   fontsize=9, loc='left')
+    ax_j.set_ylabel(r'$A_J(\omega)$')
+
+    # the diffusive guide for the density
+    o = last['observables']['energy_mid']
+    sp = resp.spectral_exponent(last['omega'], o['weights'], o['scales'])
+    if sp['A'].size:
+        g = sp['omega']
+        ax_h.loglog(g, sp['A'][0] * (g / g[0]) ** -0.5, color=C_MODEL,
+                    lw=1.6, ls='--', label=r'$\omega^{-1/2}$ (diffusive)')
+    ax_h.set_title(r'b.  density: $\omega^{-1/2}$ = diffusive',
+                   fontsize=9, loc='left')
+    ax_h.set_ylabel(r'$A_h(\omega)$')
+
+    for ax in (ax_j, ax_h):
+        ax.set_xlabel(r'$\omega$')
+        ax.text(0.02, 0.97,
+                'markers: resolution limit, $2\\times$ kernel width',
+                fontsize=7.5, color=C_REF, va='top', transform=ax.transAxes)
+        _legend(ax, loc='upper right')
+        _recede(ax)
+
+    for nm, ref, col in ((names[0], 0.0, C_DATA), (names[1], -0.5, C_AUX)):
+        lab, _ = _obs_style(nm)
+        ax_e.plot(keys, exps[nm], 'o-', ms=8, lw=1.8, color=col,
+                  label=OBS_LABELS.get(nm, nm))
+        ax_e.axhline(ref, color=col, lw=1.2, ls=':')
+    ax_e.text(0.02, 0.0, ' diffusive: 0 (current)', fontsize=7.5,
+              color=C_DATA, ha='left', va='bottom',
+              transform=ax_e.get_yaxis_transform())
+    ax_e.text(0.02, -0.5, ' diffusive: $-1/2$ (density)', fontsize=7.5,
+              color=C_AUX, ha='left', va='bottom',
+              transform=ax_e.get_yaxis_transform())
+    ax_e.set_xticks(keys)
+    ax_e.set_xlabel('$%s$' % KEY_LABELS.get(key, key))
+    ax_e.set_ylabel(r'$d\log A / d\log \omega$')
+    ax_e.set_title('c.  low-frequency exponent', fontsize=9, loc='left')
+    _legend(ax_e, loc='lower right')
+    _recede(ax_e)
+
+    if title:
+        fig.suptitle(title, fontsize=10, x=0.01, ha='left')
+    fig.tight_layout()
+    return fig, axes
+
+
+def spectral_density_from_results(results, key=None, save_dir=None,
+                                  prefix='', **kwargs):
+    """plot_spectral_density off a list of run_one results."""
+    cfg = results[0]
+    if key is None:
+        varies = [k for k in ('L', 'D') if len({r[k] for r in results}) > 1]
+        key = varies[0] if varies else 'L'
+    held = 'D' if key == 'L' else 'L'
+    kwargs.setdefault('title', 'Low-frequency spectral density   %s=%s, '
+                               'beta=%s' % (held, cfg[held], cfg['beta']))
+    fig, axes = plot_spectral_density(results, key=key, **kwargs)
+    path = None
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        path = os.path.join(save_dir, '%sspectral_density.png' % prefix)
+        fig.savefig(path, dpi=140)
+    return fig, axes, path
+
+
 # ------------------------------------------------ unpackers for run_one dicts
 
 def _result_title(result, name):
@@ -825,6 +946,9 @@ def _cli(argv=None):
                         help='plot from a saved scan_results.pkl instead of '
                              'running; picks the entry matching --L (and --D '
                              'if given)')
+    parser.add_argument('--spectral', action='store_true',
+                        help='with --pickle, also write the low-frequency '
+                             'spectral-density figure')
     parser.add_argument('--green-kubo', action='store_true',
                         help='with --pickle, also write the Green-Kubo '
                              'figure: D(eta), its flatness test, the running '
@@ -890,6 +1014,17 @@ def _cli(argv=None):
             all_results, name=args.obs if args.obs != 'all' else
             'current_total',
             save_dir=save_dir,
+            prefix='%s%s_' % (held, all_results[0][held]))
+        print('wrote', path)
+
+    if args.spectral:
+        if all_results is None or len(all_results) < 2:
+            raise SystemExit('--spectral needs a --pickle with >= 2 entries')
+        varies = [k for k in ('L', 'D')
+                  if len({r[k] for r in all_results}) > 1]
+        held = 'D' if varies[:1] == ['L'] else 'L'
+        _, _, path = spectral_density_from_results(
+            all_results, save_dir=save_dir,
             prefix='%s%s_' % (held, all_results[0][held]))
         print('wrote', path)
 

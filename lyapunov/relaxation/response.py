@@ -425,6 +425,103 @@ def green_kubo_broadened(omega, weights, eta):
     return out.reshape(eta.shape)
 
 
+def spectral_density(omega, weights, omega_eval, width, tol=1e-10):
+    """
+    The one-sided spectral density A(w), smoothed with a Gaussian kernel of
+    standard deviation `width`.
+
+    C(t) = sum_k w_k cos(omega_k t) depends only on |omega_k|, so the
+    object that matters is the density of |omega_k| weighted by w_k:
+
+        A(w) = sum_k w_k delta(|omega_k| - w),
+        C(t) = int_0^inf A(w) cos(w t) dw.
+
+    Estimated here by replacing each delta with a Gaussian, folded by
+    summing the kernel at both +w and -w.
+
+    **Gaussian, not Lorentzian, and the distinction is not cosmetic.** A
+    Lorentzian of width eta has w^-2 tails, so weight sitting in the band
+    leaks down into the low-frequency region as ~ W eta / w^2. For the
+    current, whose weight piles up around w ~ 0.5, that leak is the whole
+    signal at w ~ 0.05: the tell is A(w) coming out proportional to eta at
+    fixed w, which is exactly what a Lorentzian kernel gives here (A/eta =
+    55, 53, 68 at D = 8, 10, 12). A Gaussian leaks exp(-w^2/2 s^2), i.e.
+    nothing, so it measures the density rather than its own tails.
+
+    The Lorentzian version is still the right object for Green-Kubo, where
+    it is not a kernel choice but the physical broadening of
+    int e^{-eta t} C dt; `green_kubo_broadened` is that, and satisfies
+    A_lorentzian(0; eta) = (2/pi) I(eta) exactly.
+
+    Exact zero modes are dropped. They are a delta, not part of the
+    continuum, and for a conserved density their weight is large enough to
+    leak into the low-frequency bins and bias the exponent negative -- the
+    direction that would make a non-diffusive system look diffusive. At
+    L = 16 dropping them moves the energy exponent by +0.08.
+    """
+    omega = np.asarray(omega)
+    keep = np.abs(omega) > tol
+    omega, weights = omega[keep], weights[keep]
+    w0 = np.atleast_1d(np.asarray(omega_eval, dtype=float))[:, None]
+    d = omega[None, :]
+    g = (np.exp(-0.5 * ((d - w0) / width) ** 2)
+         + np.exp(-0.5 * ((d + w0) / width) ** 2))
+    out = (g @ weights) / (width * np.sqrt(2 * np.pi))
+    return out.reshape(np.shape(omega_eval))
+
+
+def spectral_exponent(omega, weights, scales, width_factor=2.0,
+                      omega_max=0.6, n_eval=40):
+    """
+    The low-frequency exponent of A(w), i.e. d log A / d log w as w -> 0.
+
+    This is the question underneath the whole diffusion measurement, and
+    the cleanest form of it:
+
+        A_J(0) finite and nonzero   ->  diffusive, D = (pi/2) A_J(0)/Var(H)
+        A_J(w) -> 0                 ->  subdiffusive or insulating
+        A_J with a delta at w = 0   ->  ballistic
+        A_h(w) ~ |w|^{-1/2}         ->  diffusive, seen from the density
+
+    The last is the easier measurement of the two, being a divergence.
+
+    The kernel width is `width_factor * spacing`, and the fit runs from
+    `2 * width` (below that the kernel straddles w = 0 and reports the
+    other side of the fold) up to `omega_max`. So the accessible range is
+    bounded below by the level spacing, which is the honest form of the
+    finite-size limit: there is simply no information below it, and it
+    shows up as the edge of the range rather than as a plausible number.
+
+    Returns a dict with `exponent`, the evaluation grid and `A` on it, the
+    `width` and `omega_min` used, and `n_modes_below`, the number of modes
+    (and `weight_below`, their share) beneath `omega_min` -- if that is a
+    handful, the exponent is an extrapolation and should be read as one.
+    """
+    spacing = scales['spacing']
+    width = width_factor * spacing
+    omega_min = 2.0 * width
+    result = {'width': width, 'omega_min': omega_min,
+              'spacing': spacing}
+
+    a = np.abs(np.asarray(omega))
+    below = (a < omega_min) & (a > 1e-10)
+    result['n_modes_below'] = int(below.sum())
+    result['weight_below'] = float(weights[below].sum() / weights.sum())
+
+    if omega_min >= omega_max:
+        result.update(omega=np.array([]), A=np.array([]), exponent=np.nan)
+        return result
+
+    grid = np.logspace(np.log10(omega_min), np.log10(omega_max), n_eval)
+    A = spectral_density(omega, weights, grid, width)
+    ok = A > 0
+    result.update(omega=grid, A=A)
+    result['exponent'] = (float(np.polyfit(np.log(grid[ok]),
+                                           np.log(A[ok]), 1)[0])
+                          if ok.sum() > 4 else np.nan)
+    return result
+
+
 def broadening_window(scales, tau, safety=3.0):
     """
     The range of broadenings eta that are admissible at all:

@@ -184,6 +184,10 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
             'r_squared': r_squared,
             't_fit_end': t_fit_end,
             'c_inf': c_inf,
+            # The low-frequency exponent of A(w), which is the diffusion
+            # question in its cleanest form: A_J(0) finite means diffusive,
+            # A_h ~ |w|^-1/2 is the same statement seen from the density.
+            'spectral': resp.spectral_exponent(omega, weights, scales),
             'tau_cross': resp.crossing_time(times, C_t, c_inf=c_inf),
             'total_weight': float(weights.sum()),
             # What fraction of O's static weight the tangent space sees.
