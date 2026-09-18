@@ -31,6 +31,7 @@ import sys
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import matplotlib.ticker as ticker
 
 # Same repo-root-on-the-path convention as the notebooks and
@@ -747,7 +748,8 @@ def green_kubo_from_results(results, name='current_total', key=None,
 # ------------------------------------------------------ spectral density
 
 def plot_spectral_density(results, key='L', axes=None, title=None,
-                          names=('current_total', 'energy_mid')):
+                          names=('current_total', 'energy_mid'),
+                          labels=None, rescale_current=False):
     """
     A_O(omega) at low frequency, which is the diffusion question in the form
     that needs no fitting.
@@ -768,6 +770,23 @@ def plot_spectral_density(results, key='L', axes=None, title=None,
        are: the slowest is at D (2 pi/L)^2 ~ 0.07 at L = 16.
     3. The fitted exponents against L or D, with the two diffusive
        references (0 for the current, -1/2 for the density).
+
+    `labels`, if given, is one string per result and replaces the
+    `key`-derived legend entirely. That is what lets a single figure hold
+    series in which *different* variables move -- an L scan at one bond
+    dimension beside a bond scan at one L -- which `key` alone cannot
+    express, since it assumes every series differs in the same coordinate.
+    Panel c then plots against series index rather than against `key`,
+    because the abscissa is no longer a number.
+
+    `rescale_current` divides panel a by `(2/pi) Var(H)`, turning `A_J`
+    into the intensive `D(omega)`. **Set it whenever L varies.** `J_tot`
+    is a sum over bonds, so `A_J ~ L`, and raw curves at different L are
+    separated by that factor before any physics enters -- the longer chain
+    simply sits higher. Var(H) is extensive too and cancels it, which is
+    the same cancellation that makes the Green-Kubo ratio intensive. At
+    fixed L it is only a constant rescaling, so the default is off and
+    bond scans are unaffected.
     """
     if axes is None:
         fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.2))
@@ -780,28 +799,37 @@ def plot_spectral_density(results, key='L', axes=None, title=None,
     keys = []
     for i, r in enumerate(results):
         colour, marker = _L_style(i, n)
-        keys.append(r[key])
+        keys.append(i if labels is not None else r[key])
         for nm, ax in zip(names, (ax_j, ax_h)):
             o = r['observables'][nm]
             sp = resp.spectral_exponent(r['omega'], o['weights'], o['scales'])
             exps[nm].append(sp['exponent'])
             if not sp['A'].size:
                 continue
-            lbl = r'$%s=%d$  ($s=%.3f$)' % (
-                KEY_LABELS.get(key, key), r[key], sp['exponent'])
-            ax.loglog(sp['omega'], sp['A'], lw=1.8, color=colour, label=lbl)
-            ax.plot(sp['omega'][0], sp['A'][0], marker=marker, ms=8,
+            scale = ((np.pi / 2) / r['chi']
+                     if (rescale_current and nm == 'current_total') else 1.0)
+            if labels is not None:
+                lbl = r'%s  ($s=%.3f$)' % (labels[i], sp['exponent'])
+            else:
+                lbl = r'$%s=%d$  ($s=%.3f$)' % (
+                    KEY_LABELS.get(key, key), r[key], sp['exponent'])
+            ax.loglog(sp['omega'], sp['A'] * scale, lw=1.8, color=colour,
+                      label=lbl)
+            ax.plot(sp['omega'][0], sp['A'][0] * scale, marker=marker, ms=8,
                     color=colour, mec='white', mew=1.2, ls='none', zorder=5)
 
     # what D_peak would demand of A_J(0)
     last = results[-1]
-    need = 2 * last['green_kubo']['D_peak'] * last['chi'] / np.pi
+    peak = last['green_kubo']['D_peak']
+    need = peak if rescale_current else 2 * peak * last['chi'] / np.pi
     ax_j.axhline(need, color=C_MODEL, lw=1.6, ls='--',
-                 label=r'$A_J(0)$ needed for $D_{\rm peak}=%.2f$'
-                       % last['green_kubo']['D_peak'])
+                 label=(r'$D_{\rm peak}=%.2f$' % peak) if rescale_current
+                       else (r'$A_J(0)$ needed for $D_{\rm peak}=%.2f$'
+                             % peak))
     ax_j.set_title('a.  current: flat and finite = diffusive',
                    fontsize=9, loc='left')
-    ax_j.set_ylabel(r'$A_J(\omega)$')
+    ax_j.set_ylabel(r'$(\pi/2)\,A_J(\omega)/\mathrm{Var}(H)$'
+                    if rescale_current else r'$A_J(\omega)$')
 
     # the diffusive guide for the density
     o = last['observables']['energy_mid']
@@ -816,9 +844,11 @@ def plot_spectral_density(results, key='L', axes=None, title=None,
 
     for ax in (ax_j, ax_h):
         ax.set_xlabel(r'$\omega$')
-        ax.text(0.02, 0.97,
+        ax.text(0.02, 0.02,
                 'markers: resolution limit, $2\\times$ kernel width',
-                fontsize=7.5, color=C_REF, va='top', transform=ax.transAxes)
+                fontsize=7.5, color=C_REF, va='bottom', transform=ax.transAxes)
+        lo, hi = ax.get_ylim()
+        ax.set_ylim(lo / 2.0, hi * 2.5)
         _legend(ax, loc='upper right')
         _recede(ax)
 
@@ -826,19 +856,184 @@ def plot_spectral_density(results, key='L', axes=None, title=None,
         lab, _ = _obs_style(nm)
         ax_e.plot(keys, exps[nm], 'o-', ms=8, lw=1.8, color=col,
                   label=OBS_LABELS.get(nm, nm))
-        ax_e.axhline(ref, color=col, lw=1.2, ls=':')
-    ax_e.text(0.02, 0.0, ' diffusive: 0 (current)', fontsize=7.5,
-              color=C_DATA, ha='left', va='bottom',
-              transform=ax_e.get_yaxis_transform())
-    ax_e.text(0.02, -0.5, ' diffusive: $-1/2$ (density)', fontsize=7.5,
-              color=C_AUX, ha='left', va='bottom',
-              transform=ax_e.get_yaxis_transform())
+        # Labelled in the legend rather than written on the line: an
+        # in-axes label has to sit at one end or the other, and with six
+        # series there is no end that stays clear of a marker.
+        ax_e.axhline(ref, color=col, lw=1.2, ls=':',
+                     label='diffusive: $%s$' % ('0' if ref == 0 else '-1/2'))
     ax_e.set_xticks(keys)
-    ax_e.set_xlabel('$%s$' % KEY_LABELS.get(key, key))
+    if labels is not None:
+        ax_e.set_xticklabels(labels, rotation=45, ha='right', fontsize=7.5)
+    else:
+        ax_e.set_xlabel('$%s$' % KEY_LABELS.get(key, key))
     ax_e.set_ylabel(r'$d\log A / d\log \omega$')
     ax_e.set_title('c.  low-frequency exponent', fontsize=9, loc='left')
-    _legend(ax_e, loc='lower right')
+    lo, hi = ax_e.get_ylim()
+    ax_e.set_ylim(lo - 0.55 * (hi - lo), hi)
+    _legend(ax_e, loc='lower center', ncol=2)
     _recede(ax_e)
+
+    if title:
+        fig.suptitle(title, fontsize=10, x=0.01, ha='left')
+    fig.tight_layout()
+    return fig, axes
+
+
+def plot_size_collapse(converged, suspect=None, axes=None, title=None,
+                       width_factor=2.0, omega_max=0.6, n_eval=60,
+                       D_guess=0.05):
+    """
+    Does the spectral density describe the chain, or the box it is in?
+
+    Every exponent measured so far is fitted per run, so a run that is
+    wrong in its own right still yields a tidy number. The collapse test
+    asks the prior question: plot A(omega) from several runs on one axis
+    and see whether they lie on top of each other. A genuine intensive
+    spectral density must, once the box is big enough; a finite-size or
+    finite-manifold artefact will not.
+
+    **The kernel width is common to every curve here**, and that is the
+    whole point -- it is what distinguishes this figure from
+    `plot_spectral_density`, which reads each run at its own best
+    resolution. Smoothing two spectra by different amounts and overlaying
+    them compares the kernels as much as the physics: the finer-binned run
+    keeps wiggles the coarser one has averaged away, and they separate at
+    low frequency for that reason alone. So the width is set by the
+    *coarsest* run shown (`width_factor` times its level spacing), every
+    curve is evaluated on that same grid, and the comparison is only drawn
+    down to the resulting common limit `2 * width`. The cost is real --
+    the finest runs reach lower than this figure admits, and
+    `plot_spectral_density` is where that shows.
+
+    `converged` is the series believed trustworthy, as (label, result)
+    pairs drawn on a sequential ramp; `suspect` is the runs one wants to
+    see fail, drawn recessive and dashed. Keeping both in one figure is the
+    point -- a test that cannot be seen to reject is not evidence.
+
+    The current is compared as `D(omega) = (pi/2) A_J(omega) / Var(H)`
+    rather than as `A_J` itself: `J_tot` is extensive, so `A_J ~ L` and
+    curves at different L cannot overlay however converged they are.
+    Var(H) is extensive too and divides it out -- the same cancellation
+    that makes the Green-Kubo ratio intensive. The energy density is a
+    local operator and needs no such rescaling.
+
+    Panel c is the reason larger L is not simply better. The resolution
+    limit falls as roughly `L^-1.5`, but the slowest diffusive mode sits at
+    `D (2 pi / L)^2` and falls as `L^-2` -- faster. The gap between what
+    can be seen and what one wants to see therefore *widens* with L.
+    """
+    if axes is None:
+        fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.2))
+    else:
+        fig = axes[0].figure
+    ax_d, ax_h, ax_r = axes
+    suspect = list(suspect or [])
+    shown = list(converged) + suspect
+
+    panels = (('current_total', ax_d), ('energy_mid', ax_h))
+    # One width per observable, set by the coarsest spectrum on that axis.
+    width = {nm: width_factor * max(r['observables'][nm]['scales']['spacing']
+                                    for _, r in shown)
+             for nm, _ in panels}
+    grid = {nm: np.logspace(np.log10(2 * w), np.log10(omega_max), n_eval)
+            for nm, w in width.items()}
+
+    def curves(results, styled):
+        for i, (lbl, r) in enumerate(results):
+            if styled:
+                colour, marker = _L_style(i, len(results))
+                kw = dict(lw=1.8, color=colour, ls='-')
+            else:
+                colour, marker = C_REF, 'x'
+                kw = dict(lw=1.4, color=C_REF, ls='--')
+            for nm, ax in panels:
+                scale = (np.pi / 2) / r['chi'] if nm == 'current_total' else 1.0
+                A = resp.spectral_density(r['omega'],
+                                          r['observables'][nm]['weights'],
+                                          grid[nm], width[nm])
+                ax.loglog(grid[nm], A * scale,
+                          label=(lbl if ax is ax_d else None), **kw)
+                ax.plot(grid[nm][0], A[0] * scale, marker=marker, ms=8,
+                        color=colour, mec='white', mew=1.2, ls='none',
+                        zorder=5)
+
+    curves(suspect, False)
+    curves(converged, True)
+
+    peak = float(np.mean([r['green_kubo']['D_peak'] for _, r in converged]))
+    ax_d.axhline(peak, color=C_MODEL, lw=1.6, ls='--',
+                 label=r'$D_{\rm peak}\approx%.2f$ (Green-Kubo crossover)'
+                       % peak)
+    ax_d.set_ylabel(r'$(\pi/2)\,A_J(\omega)/\mathrm{Var}(H)$')
+    ax_d.set_title('a.  current, rescaled to be intensive',
+                   fontsize=9, loc='left')
+
+    ref = converged[-1][1]
+    A = resp.spectral_density(ref['omega'],
+                              ref['observables']['energy_mid']['weights'],
+                              grid['energy_mid'], width['energy_mid'])
+    g = grid['energy_mid']
+    ax_h.loglog(g, A[0] * (g / g[0]) ** -0.5, color=C_MODEL, lw=1.6, ls='--',
+                label=r'$\omega^{-1/2}$ (diffusive)')
+    ax_h.set_ylabel(r'$A_h(\omega)$')
+    ax_h.set_title('b.  energy density, already intensive',
+                   fontsize=9, loc='left')
+
+    for nm, ax in panels:
+        ax.set_xlabel(r'$\omega$')
+        ax.axvline(2 * width[nm], color=C_REF, lw=1.0, ls=':')
+        ax.annotate(' common kernel $\\sigma=%.3f$' % width[nm],
+                    xy=(2 * width[nm], 0.02),
+                    xycoords=('data', 'axes fraction'),
+                    fontsize=7.5, color=C_REF, ha='left', va='bottom')
+        # Headroom rather than a cleverer legend placement: these curves
+        # oscillate, so there is no corner that stays empty as the run set
+        # changes. Opening the y-range keeps the legend off the data
+        # whatever is plotted.
+        lo, hi = ax.get_ylim()
+        ax.set_ylim(lo / 2.0, hi * 3.0)
+        # These axes span well under a decade, so the default log locator
+        # offers a single labelled tick. Place them by hand.
+        lo, hi = ax.get_xlim()
+        ticks = [t for t in (0.02, 0.03, 0.05, 0.07, 0.1, 0.15, 0.2, 0.3,
+                             0.5, 0.7, 1.0) if lo <= t <= hi]
+        ax.xaxis.set_major_locator(mticker.FixedLocator(ticks))
+        ax.xaxis.set_minor_locator(mticker.NullLocator())
+        ax.xaxis.set_major_formatter(mticker.FuncFormatter(
+            lambda v, _: ('%g' % v)))
+        _legend(ax, loc='upper right')
+        _recede(ax)
+    ax_h.text(0.02, 0.09, 'dashed grey: $D_{\\rm bond}=14,16$, past where '
+                          '$\\beta=0.1$ fills the bond',
+              fontsize=7.5, color=C_REF, transform=ax_h.transAxes)
+
+    Ls = np.array([r['L'] for _, r in converged], dtype=float)
+    order = np.argsort(Ls)
+    Ls = Ls[order]
+    def wmin(nm):
+        return np.array([r['observables'][nm]['spectral']['omega_min']
+                         for _, r in converged])[order]
+    ax_r.loglog(Ls, wmin('energy_mid'), 'o-', ms=8, lw=1.8, color=C_AUX,
+                label=r'resolved: $\omega_{\min}$ (density)')
+    ax_r.loglog(Ls, wmin('current_total'), 's-', ms=8, lw=1.8, color=C_DATA,
+                label=r'resolved: $\omega_{\min}$ (current)')
+    ax_r.loglog(Ls, D_guess * (2 * np.pi / Ls) ** 2, '--', lw=1.6,
+                color=C_MODEL,
+                label=r'wanted: $D(2\pi/L)^2$, $D=%.2f$' % D_guess)
+    ax_r.set_xlabel('$L$')
+    ax_r.set_ylabel(r'$\omega$')
+    ax_r.set_xscale('log')
+    ax_r.set_xticks(Ls)
+    ax_r.set_xticks([], minor=True)
+    ax_r.set_xticklabels(['%d' % L for L in Ls])
+    ax_r.set_xlim(Ls[0] * 0.92, Ls[-1] * 1.08)
+    ax_r.set_title('c.  the target recedes faster than the resolution',
+                   fontsize=9, loc='left')
+    lo, hi = ax_r.get_ylim()
+    ax_r.set_ylim(lo, hi * 4.0)
+    ax_r.set_yticks([], minor=True)
+    _legend(ax_r, loc='upper right')
+    _recede(ax_r)
 
     if title:
         fig.suptitle(title, fontsize=10, x=0.01, ha='left')

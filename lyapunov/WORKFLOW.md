@@ -128,6 +128,29 @@ Next: `A_j(ω→0)` is the Green–Kubo integrand, so turning it into a `D` and
 comparing with the nonlinear Gaussian-width `D` from `qtensor.visualise`
 needs no new machinery. Not done.
 
+### Size push, 2026-09-18: L = 24 and L = 32 at D = 12
+
+Done, and it changed the conclusions. `relaxation/README.md`, "Measured
+(2026-09-18, evening)", has the numbers and the figures. Three things to
+carry forward:
+
+- **Larger L is the good lever; larger D is not.** At β = 0.1 the
+  thermofield double is nearly a product of Bell pairs (`s_min/s_max` at
+  the middle bond is 1.8e-11 by D = 16), so bond dimension past ~12 adds
+  numerically null directions. D = 14 and D = 16 at L = 16 are the runs
+  that fail a collapse test that L = 24 and L = 32 pass. **Treat the
+  D ≥ 14 rows of the bond scan as unreliable**, not as the best data.
+- **`A_h(ω)` is converged in L** — L = 24 and L = 32 agree to ~1% over the
+  resolved band. First evidence here that a spectral density is a property
+  of the chain rather than of the box.
+- **The earlier bound `D ≤ 0.045` is withdrawn.** It was evaluated on an
+  L = 16 spectrum; the same argument gives `D ≤ 0.107` at L = 32 and is
+  still loosening. `D_peak` remains an overestimate, but by ~5x, not ~10x.
+
+Cost, for planning: L = 24 → dim 8879, 22 min; L = 32 → dim 12335, 57 min,
+~7 GB resident. `eigh` is ~90% of it and scales as roughly `dim^3`, so
+L = 40 (dim ~15800) would be ~2 h and ~12 GB.
+
 ## Validations passed
 
 - `H_asym` annihilates the exact infinite-temperature thermofield state to

@@ -657,7 +657,13 @@ is no model to choose and no window to tune, and the finite-size limit is
 explicit — nothing below the level spacing is knowable, and that shows up
 as the edge of the plot rather than as a plausible number.
 
-### Measured (2026-09-18): D_peak is a ~10x overestimate
+### Measured (2026-09-18, morning): D_peak is an overestimate
+
+> **Read the next section before using any number here.** The L = 24
+> and L = 32 runs refute the bound `D <= 0.045` and the claim that the
+> current's exponent was measured rather than extrapolated. What
+> survives is the kernel argument, the zero-mode argument, and the
+> direction of the `D_peak` result.
 
 `spectral_density` and `spectral_exponent` do it. Figures
 `figures/L16_spectral_density.png` (bond scan) and
@@ -701,8 +707,12 @@ validity window" was always going to mean.
 `5.80 * 0.0357 / 8.15 = 2.5%` of the current's weight below `w_min`. The
 measured figure is **0.24%**, ten times less — a count of modes in an
 interval, no smoothing anywhere. Taking `A_J` non-decreasing on
-`[0, w_min]`, which the `w^1.4` fit supports, gives `A_J(0) <=
-weight_below * Var(J)/w_min` and hence **D <= 0.045 at L = 16, D = 12**.
+`[0, w_min]` gives `A_J(0) <= weight_below * Var(J)/w_min` and hence
+`D <= 0.045 at L = 16, D = 12`.
+
+> ~~`D <= 0.045`~~ — **withdrawn.** The inequality is sound; the spectrum
+> it was evaluated on was not converged. See the next section: the same
+> budget at L = 32 gives `D <= 0.107`, and the bound is still loosening.
 
 **The two observables disagree, and the diagnostics say why.**
 
@@ -723,16 +733,106 @@ against `w_min = 0.108`. **We are a factor of ~1.5 in resolution away from
 seeing the slowest hydrodynamic mode at all**, which is the sharpest
 statement of what is missing.
 
-The current, by contrast, has only 0.24% of its weight unresolved, so its
-`w^1.4` is measured rather than extrapolated. Taken at face value it says
-this chain is subdiffusive or insulating at beta = 0.1. Taken carefully it
-says `A_J(0) < 0.55`, and whether that is zero or merely small is the
-question one more decade of resolution would settle.
+The current, by contrast, has only 0.24% of its weight unresolved — which
+at the time read as `w^1.4` being measured rather than extrapolated.
 
-**What would settle it.** Reaching `w_min < 0.07` for the *density* needs
-its spacing down by ~1.5x, i.e. `n_eff` up by ~1.5x at fixed L — within
-reach of D = 16-20 at L = 16, since `n_eff` for the density went 97 → 145
-over D = 6–12. That is the cheapest decisive experiment left.
+> **Both halves of that turned out to be wrong**, and in an instructive
+> way: a small *unresolved* weight is not the same as a *converged* one.
+> Only 0.24% of the current's weight sat below L = 16's resolution limit,
+> but raising L put ten times more weight there. Little weight below the
+> limit says the kernel is not being asked to extrapolate; it says nothing
+> about whether the modes that would live there exist yet.
+
+### Measured (2026-09-18, evening): L = 24 and L = 32 at D = 12
+
+Runs: L = 24 (dim 8879, 22 min) and L = 32 (dim 12335, 57 min), both at
+D = 12, beta = 0.1, fixed-point residual 3.7e-07 and 6.3e-07. Figures
+`figures/size_comparison_spectral.png` (each run at its own resolution)
+and `figures/size_comparison_collapse.png` (all runs at one common
+kernel).
+
+**The collapse test.** Evaluate `A(w)` at the same `w` with the same
+kernel width across runs and see whether the curves agree. This is the
+question that has to be settled before any per-run exponent means
+anything, and it is *not* what the earlier figures asked — they read each
+run at its own best resolution, which smooths the runs by different
+amounts and separates them at low frequency for that reason alone.
+
+The current has to be compared as `D(w) = (pi/2) A_J(w)/Var(H)` rather
+than as `A_J`: `J_tot` is a sum over bonds, so `A_J ~ L` and raw curves at
+different L are offset by that factor before any physics enters. Var(H) is
+extensive too and cancels it. `Var(J)/L` = 0.510, 0.521, 0.527 at
+L = 16, 24, 32 confirms the extensivity directly.
+
+| ratio max/min over the common band | L = 16, 24, 32 | L = 24 vs 32 only |
+|---|---|---|
+| energy density `A_h` | 1.30 median, 2.06 worst | **1.01 median, 1.20 worst** |
+| current `D(w)` | 2.67 median, 10.0 worst | 1.08 median, 1.63 worst |
+
+**The energy density has converged in L.** L = 24 and L = 32 agree to
+about 1% across the whole resolved band — a genuine collapse, and the
+first evidence in this project that `A_h` is a property of the chain
+rather than of the box. L = 16 is visibly off, so the convergence happened
+between 16 and 24.
+
+**The current's low-frequency collapse at L = 16 was finite-size.** At
+`w = 0.072`, `D(w)` reads 0.085 at L = 16 but 0.849 and 0.823 at L = 24
+and L = 32 — a factor of ten, in the direction that had been read as
+evidence for `D -> 0`. The fall-off is a depletion that recedes as the box
+grows, not a property of the chain.
+
+**The weight budget, evaluated at a *fixed* window rather than at each
+run's own limit**, shows the same thing without any kernel. Fraction of
+`Var(J)` carried by modes below `w = 0.05`, and the bound it implies:
+
+| | L=16 D=8 | L=16 D=12 | L=16 D=16 | L=24 D=12 | L=32 D=12 |
+|---|---|---|---|---|---|
+| weight below 0.05 | 0.20% | 0.40% | 0.83% | 0.77% | 0.81% |
+| implied `D <=` | 0.027 | 0.052 | 0.108 | 0.101 | **0.107** |
+
+The bound **loosens monotonically in both L and D** and shows no sign of
+saturating. It is a valid bound at every row; it is simply not yet a
+useful one. What still stands is its direction — `D_peak` is 0.465, 0.513,
+0.537 at L = 16, 24, 32, so the crossover estimate remains several times
+larger than anything the low-frequency weight supports, and the gap has
+narrowed from ~10x to ~5x rather than closing.
+
+**Neither exponent is converged.** The current reads +0.67, +1.39, +1.41,
++0.70, +0.71 across D = 8-16 at L = 16, and +1.41, +0.20, +0.55 across
+L = 16, 24, 32 at D = 12 — scatter of about +/-0.6 with no trend. The
+density reads -0.56, -0.90, -0.80 across L = 16, 24, 32, consistently
+steeper than the diffusive -1/2 and consistently with ~24% of its weight
+below the limit. The `w^1.41` quoted in the previous section was two
+points coinciding.
+
+**Bond dimension is exhausted as a lever at beta = 0.1.** `s_min/s_max` at
+the middle bond of `psi*` is 1.5e-8, 2.2e-9, 3.6e-9, 8.4e-10, 1.2e-10,
+1.8e-11 at D = 6...16: the thermofield double at this temperature is
+nearly a product of Bell pairs, so past D ~ 12 the added directions are
+numerically null and the tangent modes living on them carry arbitrary
+weight. The collapse test sees this independently — D = 14 and D = 16 at
+L = 16 are the curves that miss the collapse in both panels of
+`size_comparison_collapse.png`, while L = 24 and L = 32 at D = 12 land on
+top of each other. **The large-L runs are the trustworthy ones and the
+large-D runs are not**, which is the reverse of what was assumed when the
+bond push was planned.
+
+**"Resolve the slowest hydrodynamic mode" was the wrong target.** The
+resolution limit does improve with L — `w_min` for the density is 0.1077,
+0.0561, 0.0392 at L = 16, 24, 32, falling as `L^-1.46`, which no bond
+dimension could achieve. But the slowest diffusive mode sits at
+`D (2 pi/L)^2` and falls as `L^-2`, which is faster. The ratio of what we
+must resolve to what we can resolve is 14, 16, 20 at L = 16, 24, 32:
+**the target recedes faster than the resolution improves**, so no
+accessible L reaches it. Panel c of the collapse figure is this statement.
+
+The question worth asking instead is the one the collapse test answers:
+does `A_h(w)` agree between system sizes over the band that *is* visible?
+It does, from L = 24 up. So the remaining honest gap is not resolution but
+interpretation — `A_h ~ w^-0.8` over `w` in `[0.11, 0.6]` is a converged
+measurement of something, and whether a band that far above the
+hydrodynamic window should look like `w^-1/2` at all is a physics question
+rather than a numerical one.
 
 ## Code
 
@@ -883,12 +983,15 @@ Not yet written: the wavevector-resolved energy density needed to turn
    right — it is what makes τ_1/e converge — but it did not make the energy
    density relax.
 
-5. **Is `A_J(ω) → 0` physical, or a finite-size gap?** Measured directly:
-   `A_J ~ ω^1.41` at L = 16, D = 12, with only 0.24% of the weight below
-   the resolution limit, so it is measured rather than extrapolated — and
-   it bounds `D ≤ 0.045`, an order of magnitude under the Green–Kubo
-   crossover estimate. The density disagrees (`ω^−0.56`, the diffusive
-   value) but has **26%** of its weight unresolved, right where the slowest
-   hydrodynamic mode sits (`D(2π/L)² ≈ 0.07` against `ω_min = 0.108`).
-   Resolving that is the cheapest decisive experiment left: D = 16–20 at
-   L = 16 should do it. See "Measured (2026-09-18)".
+5. **Is `A_J(ω) → 0` physical, or a finite-size gap?** **Finite-size, so
+   far as L = 32 can tell.** `D(ω = 0.072)` reads 0.085 at L = 16 but 0.85
+   at L = 24 and L = 32, so the low-frequency depletion recedes with the
+   box. The weight-budget bound loosens monotonically — `D ≤ 0.027, 0.052,
+   0.107` as the calculation improves — and has not saturated, so no upper
+   bound on `D` can be quoted yet. The exponents are not converged either
+   (±0.6 scatter for the current). What *is* converged is `A_h(ω)` itself,
+   to ~1% between L = 24 and L = 32. The lever that is exhausted is bond
+   dimension, not system size: β = 0.1 makes the TFD nearly a product of
+   Bell pairs, so D > 12 adds numerically null directions, and D = 14, 16
+   are the runs that fail the collapse test. See "Measured (2026-09-18,
+   evening)".
