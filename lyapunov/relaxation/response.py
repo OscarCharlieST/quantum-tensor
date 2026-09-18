@@ -202,10 +202,14 @@ def static_variance(psi, O_mpo, tol=1e-8):
     is the fraction of O's static weight the tangent space captures. At
     beta = 0.1, D = 8 that ratio is 1.0000 to machine precision for every
     observable here -- z, x, h_l, j_l, J_tot and H alike -- so the
-    Green-Kubo numerator carries *no* static truncation error. The ratio is
-    not vacuous: a weight-L product of random single-site rotations scores
-    0.66 at L = 4, and a random product on the full doubled site 0.78. What
-    the physical observables have in common is that they are sums of
+    Green-Kubo numerator carries *no* static truncation error. The ratio
+    is not vacuous, and the control is emphatic: at L = 8 a product over
+    every site of a random traceless Hermitian single-site operator scores
+    below 0.001 (and below 0.01 if the random operator acts on the full
+    doubled site), against 1.0000 for every observable here. Nothing is
+    degenerate about that ratio -- the random operator's variance is a
+    healthy 3.9e-03 while the weight the tangent space sees is ~1e-08.
+    What the physical observables have in common is that they are sums of
     low-weight terms, and near beta = 0 the state is close to rank 1, where
     the padded tangent space is generous.
 
@@ -659,9 +663,12 @@ def dephasing_response(C, c_inf):
     C(t) = C_inf + (1 - C_inf) C~(t) is exact, not an approximation: it
     splits the response into a conserved piece and a dephasing piece, and
     only the second has a relaxation time. Fitting or 1/e-crossing the raw
-    C measures it against the wrong asymptote -- at L = 8 the energy floor
-    is 0.156, and at L = 4 it is 0.349, which is close enough to 1/e =
-    0.368 that the raw crossing time is nearly meaningless.
+    C measures it against the wrong asymptote. The energy floor is 0.156,
+    0.100, 0.074 at L = 8, 12, 16 -- roughly 1.2/L, so it grows as the
+    chain shortens. At L = 8 a raw crossing has to wait for C~ to fall to
+    (1/e - 0.156)/0.844 = 0.251 rather than to 0.368, which inflates the
+    time; and once the floor reaches 1/e = 0.368 the raw crossing stops
+    existing at all.
     """
     c_inf = float(c_inf)
     if not c_inf:

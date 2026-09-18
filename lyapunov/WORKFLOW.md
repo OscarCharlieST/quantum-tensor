@@ -76,24 +76,24 @@ tangent basis. An assert guards it.
 python lyapunov/relaxation/run_relaxation_scan.py
 ```
 
-About 70 s for L = 4, 8, 12, 16 at D = 8. Writes `scan_results.pkl`
+About 70 s for L = 8, 12, 16 at D = 8. Writes `scan_results.pkl`
 alongside the script (weights, response curves, spectra, timings).
 
 ## Results so far
 
-Full scan L = 4, 8, 12, 16 at D = 8, **β = 0.1**, seed 0, ~70 s;
+Full scan L = 8, 12, 16 at D = 8, **β = 0.1**, seed 0, ~70 s;
 `scan_results.pkl` written. τ from the 1/e crossing of the response (the
 exponential fits are unreliable here — see below):
 
-| observable | L=4 | L=8 | L=12 | L=16 |
-|---|---|---|---|---|
-| `z_mid` | 2.021 | 2.050 | 2.131 | 2.189 |
-| `x_mid` | 0.479 | 0.479 | 0.501 | 0.480 |
-| `energy_mid` | 3.024 | 1.494 | 1.531 | 1.484 |
-| `current_mid` | 0.903 | 0.973 | 0.974 | 0.958 |
+| observable | L=8 | L=12 | L=16 |
+|---|---|---|---|
+| `z_mid` | 2.050 | 2.131 | 2.189 |
+| `x_mid` | 0.479 | 0.501 | 0.480 |
+| `energy_mid` | 1.494 | 1.531 | 1.484 |
+| `current_mid` | 0.973 | 0.974 | 0.958 |
 
-Tangent dimensions 191 / 959 / 1727 / 2495. L = 8 onward agree to ~2% for
-everything except L = 4, which is too small.
+Tangent dimensions 959 / 1727 / 2495; everything agrees to ~2% across
+the three.
 
 `z_mid` and `x_mid` were dropped from the default scan on 2026-09-18 — they
 were generic non-conserved contrasts and carry no transport information, so
@@ -182,12 +182,17 @@ Fix: derive `C^n` from the bond matrices (`C^n = Λ^{n-1} A_R^n`,
 
 ## To check
 
-1. **β = 1**, against the β ≈ 1e-2 in `active.ipynb`. At your usual
-   temperature the thermofield double is effectively rank 2 (Schmidt
-   `[1, 5e-3, 1e-8, 7e-11]` at L=4), so most of a D=8 tangent space would sit
-   on numerically null directions. β = 1 fills the bond dimension while
-   keeping the residual small. This is the judgement call most worth your
-   scrutiny.
+1. ~~**β = 1**, against the β ≈ 1e-2 in `active.ipynb`, because at high
+   temperature the thermofield double is effectively rank 2 and most of a
+   D=8 tangent space would sit on numerically null directions.~~
+   **Answered 2026-09-18, and the concern was real.** At β = 0.1 and
+   L = 16, `s_min/s_max` at the middle bond is 1.5e-8, 2.2e-9, 3.6e-9,
+   8.4e-10, 1.2e-10, 1.8e-11 for D = 6…16: past D ≈ 12 the added
+   directions *are* numerically null, and the D = 14 and D = 16 runs are
+   exactly the ones that fail the collapse test. The resolution is not to
+   raise β — the standing default stays 0.1, where hydrodynamics is
+   expected — but to stop treating bond dimension as the lever and raise L
+   instead. See `relaxation/README.md`, "Measured (2026-09-18, evening)".
 2. **`x_mid` relaxes faster than its own Zeno time**, so there is no
    exponential regime and `tau_fit` correctly returns `nan`. Only the 1/e
    crossing means anything there.

@@ -213,7 +213,7 @@ Scan defaults in `run_relaxation_scan.py`:
 |---|---|---|
 | `BETA` | 0.1 | see below |
 | `D` | 8 | same for every L, so the tangent dimension grows only through L |
-| `L_VALUES` | 4, 8, 12, 16 | |
+| `L_VALUES` | 8, 12, 16 | |
 | `IMAG_STEPS` | 60 | TDVP steps for the imaginary-time build |
 | `SEED_NOISE` | 0 | none needed, see below |
 
@@ -309,13 +309,12 @@ equilibrium state, which is why the energy profile is stationary to
 `O(t²)` — so it has to build up first, on the Maxwell–Cattaneo timescale
 `τ ∂_t j + j = -D ∇e`. That `τ` is what `current_mid` measures.
 
-Scan: `L = 4, 8, 12, 16`, `D = 8`, `β = 0.1`, seed 0. Figures
+Scan: `L = 8, 12, 16`, `D = 8`, `β = 0.1`, seed 0. Figures
 `figures/D8_timescale_scan.png` and
 `figures/L16_D8_{current,energy}_mid_{spectrum,response}.png`.
 
 | L | τ(current) | τ(energy) | ratio | current `n_eff` | energy `n_eff` |
 |---|---|---|---|---|---|
-| 4 | 0.903 | 3.024 | 3.35 | 30 | 7 |
 | 8 | 0.973 | 1.494 | 1.54 | 177 | 40 |
 | 12 | 0.974 | 1.531 | 1.57 | 324 | 76 |
 | 16 | 0.958 | 1.484 | 1.55 | 383 | 116 |
@@ -372,8 +371,6 @@ and is stable across L where the fit is not.
 - **τ(current) is only 1.5x above its own `t_zeno` = 0.64**, so the window
   in which an exponential regime could exist is marginal for this
   observable — narrower than for the energy density.
-- L = 4 is not converged for either observable and should be ignored.
-
 **Followed up** in the next section: the zero-frequency weight in finding 2
 *is* the Green–Kubo integrand.
 
@@ -396,8 +393,8 @@ extensive, and it is their ratio converging in `L` that has to be checked.
 `single_copy_current` is the local `j_mid`, and its autocorrelator is only
 the `r = 0` term of `sum_r <j_r(t) j_0(0)>`. The `r != 0` terms carry the
 diffusive contribution, and the local term is a vanishing fraction of the
-whole: `D_peak` from `j_mid` alone falls 0.059, 0.028, 0.018, 0.013 across
-L = 4, 8, 12, 16, i.e. like `1/L`, while the total current gives 0.45.
+whole: `D_peak` from `j_mid` alone falls 0.028, 0.018, 0.013 across
+L = 8, 12, 16, i.e. like `1/L`, while the total current gives 0.45.
 
 `single_copy_total_current` builds `J_tot` as one operator. Summing the
 three-site `j_l` over *every* site, dropping what falls off the open ends,
@@ -512,7 +509,7 @@ for every L >= 8, below 1e-3 at most 5e-7, below 1e-2 at most 2.3e-4. So
 there is no ballistic delta and `D` is at least finite in principle.
 
 **The energy density carries an exact one, and must.** `conserved_fraction`
-measures it: 0.349, 0.156, 0.100, 0.074 at L = 4, 8, 12, 16, and it is
+measures it: 0.156, 0.100, 0.074 at L = 8, 12, 16, and it is
 perfectly independent of bond dimension (0.07396 at every D from 6 to 12).
 This is the Mazur bound. An observable overlapping a conserved quantity
 cannot relax to zero — split it,
@@ -970,7 +967,7 @@ Not yet written: the wavevector-resolved energy density needed to turn
 
    *Partly settled since.* D **is** the lever: the tangent dimension goes
    as ~39 D² at L = 16, and `n_eff` for the total current rises 27 → 322
-   over D = 6–12 where the whole L = 4–16 scan bought only 29 → 115. τ_1/e
+   over D = 6–12 where the whole L = 8–16 scan bought only 53 → 114. τ_1/e
    for `energy_mid` is now flat in bond dimension (1.401 / 1.408 / 1.395 /
    1.400 at D = 6/8/10/12).
 

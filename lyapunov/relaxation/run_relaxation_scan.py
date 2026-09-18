@@ -34,7 +34,7 @@ import lyapunov.relaxation.response as resp
 J, H_FIELD, G_FIELD = 1, 0.25, -0.525   # tilted Ising defaults (1702.08894)
 BETA = 0.1                              # inverse temperature of psi_uniform
 D = 8                                   # bond dimension, same for every L
-L_VALUES = [4, 8, 12, 16]
+L_VALUES = [8, 12, 16]
 IMAG_STEPS = 60                         # TDVP steps for the imaginary-time build
 SEED_NOISE = 0.0                        # none needed, see build_uniform_thermofield
 T_MAX_FACTOR = 3.0                      # response evaluated to this * t_heis

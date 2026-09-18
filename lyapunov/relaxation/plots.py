@@ -467,6 +467,10 @@ def plot_timescale_scan(results, names=None, axes=None, title=None,
     if n_rejected:
         _annotate(ax_tau, [f'{n_rejected} of {len(names) * len(L)} fits',
                            f'rejected at $R^2 < {r2_min:g}$'])
+    # Headroom before the legend and the rejected-fits note go in: both sit
+    # along the top, and the slowest series runs up into them otherwise.
+    lo, hi = ax_tau.get_ylim()
+    ax_tau.set_ylim(lo, hi + 0.55 * (hi - lo))
     _legend(ax_tau, loc='upper left')
     _recede(ax_tau)
 
