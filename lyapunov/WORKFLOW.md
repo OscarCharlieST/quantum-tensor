@@ -233,11 +233,35 @@ Fix: derive `C^n` from the bond matrices (`C^n = Λ^{n-1} A_R^n`,
   cross-checked against `visualise.estimate_diffusion_constant_from_widths`
   on a direct `finiteTDVP.tdvp` run. This is the natural physics payoff and
   connects to the transport machinery already in the repo.
-- β and D scans — both cheap, and D is the lever that densifies the
-  spectrum without growing L.
 - The auxiliary-gauge-mode caveat (unitary rotations on the purification's
   auxiliary copy are physically trivial but may appear as tangent
   directions) is still unresolved.
+- ~~β and D scans — both cheap, and D is the lever that densifies the
+  spectrum without growing L.~~ **Superseded 2026-09-18.** Level spacing
+  goes as `1/(L D²)` while cost goes as `dim^2.94` with `dim ~ 3 L D²`, so
+  L and D buy resolution at exactly the same price; and D saturates at 16
+  because the residual becomes build-limited there. See
+  `relaxation/README.md`, "Cost and convergence".
+
+### Housekeeping: delete the β ≠ 0.1 run data
+
+**Wanted (2026-09-18, Charlie).** `C:\Users\charl\lyapunov_runs` holds
+20.0 GB of `tdvp_lyapunov` h5 output and β = 0.1 has been the standing
+default since 2026-09-17. Everything at another temperature is to go. The
+decisions that were taken off the back of the β = 1 runs will be recorded
+separately first — **that write-up is the blocker, not the deletion**, and
+it is Charlie's call how it is recorded.
+
+| action | size | files |
+|---|---|---|
+| keep (β = 0.1) | 3.87 GB | `L8_D8_beta0.1_k2n.h5`, `L16_D3_beta0.1_template1.h5` |
+| **delete** (β = 1) | 12.3 GB | `L8_D12_beta1`, `L8_D8_beta1_k2n`, `L16_D4_beta1_k2n`, `L8_D8_beta1`, `L12_D4_beta1`, `L16_D4_beta1`, `L8_D4_beta1_dt025`, `L8_D4_beta1` |
+| **delete** (β = 0.01) | 3.86 GB | `L8_D8_beta0.01_k2n.h5` |
+
+Recovers 16.2 GB. Note the temperature scan in `tdvp_lyapunov/README.md`
+and the `q0 = 1.4` result in its open questions both cite β = 1 and
+β = 0.01 numbers; those tables stay, but become unreproducible without a
+re-run once the files go.
 
 ## tdvp_lyapunov (2026-09-16)
 

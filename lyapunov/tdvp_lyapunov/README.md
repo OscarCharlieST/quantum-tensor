@@ -963,6 +963,12 @@ not for reading any one vector.
 
 ## Next
 
+0. **Housekeeping: the β ≠ 0.1 run data is to be deleted** (16.2 GB of the
+   20.0 GB in `C:\Users\charl\lyapunov_runs`). Blocked on recording the
+   decisions that came out of the β = 1 runs — Charlie's call how. The
+   inventory is in `../WORKFLOW.md`, "Housekeeping". The temperature scan
+   and the `q0 = 1.4` result below both cite β = 1 and β = 0.01 numbers and
+   become unreproducible without a re-run once the files go.
 1. **Why linear?** The dispersion `lambda ~ A(q - q0)` is the open
    question. The mean exponent used so far is dominated by the bulk of the
    spectrum; the sharper probe is the time-resolved weighted decay
