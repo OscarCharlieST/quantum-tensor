@@ -137,8 +137,13 @@ carry forward:
 - **The earlier bound `D ≤ 0.045` is withdrawn.** It was evaluated on an
   L = 16 spectrum; the same argument gives `D ≤ 0.107` at L = 32 and is
   still loosening. `D_peak` remains an overestimate, but by ~5x, not ~10x.
-- **`A_h(ω)` agrees to ~1% between L = 24 and L = 32** over the resolved
-  band. Read with the caveat below: both are at D = 12.
+- ~~**`A_h(ω)` agrees to ~1% between L = 24 and L = 32**~~ **Withdrawn
+  2026-09-18 night.** Both were at D = 12. The L = 24, D = 16 run
+  (residual 3.5e-10, a thousand times better) disagrees with L = 24,
+  D = 12 by 91% at the *same* L, while the two D = 12 runs agree with each
+  other to 14%. The collapse was two under-converged runs agreeing.
+  `n_eff` for the current goes 143 -> 1081 and the weight-budget bound
+  0.101 -> 0.502. See `relaxation/README.md`, "Measured (night)".
 - ~~**Larger L is the good lever; larger D is not**, because past D ≈ 12
   the added directions are numerically null and D = 14, 16 fail the
   collapse test.~~ **Withdrawn the same day.** Every hard diagnostic says

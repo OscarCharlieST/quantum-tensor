@@ -824,6 +824,10 @@ steeper than the diffusive -1/2 and consistently with ~24% of its weight
 below the limit. The `w^1.41` quoted in the previous section was two
 points coinciding.
 
+> **Superseded by "L = 24 at D = 16" below**, which confirms the worry
+> this note raised: the L = 24 / L = 32 agreement was two runs at the same
+> under-converged bond dimension, and it does not survive raising D.
+>
 > **The D = 14, 16 runs also miss the collapse, and this section
 > originally read that as those runs being unreliable. That was wrong** —
 > see "Cost and convergence" above. Every hard diagnostic says they are
@@ -853,6 +857,58 @@ whether a band that far above the hydrodynamic window should look like
 `w^-1/2` at all is a physics question. Measuring a finite-`q` density
 correlator, and fitting `w(q) = D q^2` at several small-but-nonzero `q`,
 would sidestep the `w -> 0` limit entirely.
+
+### Measured (2026-09-18, night): L = 24 at D = 16, and the collapse fails
+
+The first run with both levers past their knees: L = 24, D = 16,
+`IMAG_STEPS = 240`, dim 15615, 1.9 h. **Fixed-point residual 3.5e-10** —
+a thousand times better than the L = 24, D = 12 run and the best of any
+run here.
+
+| | L=24, D=12 | **L=24, D=16** | L=32, D=12 |
+|---|---|---|---|
+| residual | 3.7e-07 | **3.5e-10** | 6.3e-07 |
+| `n_eff` current | 143 | **1081** | 448 |
+| `w_min` current | 0.0724 | **0.0096** | 0.0220 |
+| weight below 0.05 | 0.77% | **3.8%** | 0.81% |
+| `D <=` (weight budget) | 0.101 | **0.502** | 0.107 |
+| `D_peak` | 0.513 | **0.846** | 0.537 |
+| `eta` window | 0.40 dec | **1.25 dec** | 0.85 dec |
+
+**The collapse at D = 12 was an artefact.** Compared at a common kernel:
+
+| | median ratio | worst |
+|---|---|---|
+| L=24 vs L=32, both D=12 | 1.14 | 1.36 |
+| **L=24 D=12 vs L=24 D=16** (same L!) | **1.91** | 5.66 |
+| L=16 D=12 vs L=16 D=16 (same L) | 1.82 | 2.36 |
+| L=16 vs L=24, both D=16 | 1.25 | 2.16 |
+
+Two runs at the same under-converged `D` agree with each other to 14% and
+disagree with the converged calculation at their *own* `L` by 91%. That is
+exactly the failure mode flagged in the previous section, now measured.
+The earlier headline — "`A_h` is converged in L" — is **withdrawn**.
+
+**Every quantitative claim about `D` is still moving, and all in the same
+direction.** The weight-budget bound has gone 0.052 -> 0.101 -> **0.502**
+as the calculation improved, and `D_peak` 0.465 -> 0.537 -> **0.846**. The
+two are now within a factor of 1.7 of each other rather than 5. Nothing
+here is converged, and the bound is no longer far below the crossover
+estimate; it may end up agreeing with it.
+
+**Caveat: `D` and `IMAG_STEPS` were both raised, so the spectral changes
+are confounded.** The residual separates cleanly (from
+`convergence_probe.py` at L = 24): 3.7e-07 at D=12/60, 7.8e-08 at
+D=12/240, 1.1e-08 at D=16/60, 3.5e-10 at D=16/240 — **D alone buys 33x,
+steps alone 4.8x**, so `D` dominates. The spectrum was not measured at
+D=12/240, though, and until it is, the split between the two cannot be
+quoted for `A(w)`. That control run is dim 8879, about 20 minutes.
+
+Figures: `figures/size_comparison_collapse.png` now contrasts the two
+D = 16 runs against the D = 12 pair that agreed with each other. Panel b is
+the clearest statement: the D = 16 curves sit well above the D = 12 ones
+and track the `w^-1/2` guide over `w` in `[0.1, 0.3]`, which the D = 12
+curves do not.
 
 ## Code
 

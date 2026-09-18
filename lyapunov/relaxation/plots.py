@@ -885,7 +885,7 @@ def plot_spectral_density(results, key='L', axes=None, title=None,
 
 def plot_size_collapse(converged, suspect=None, axes=None, title=None,
                        width_factor=2.0, omega_max=0.6, n_eval=60,
-                       D_guess=0.05):
+                       D_guess=0.05, suspect_note=None):
     """
     Does the spectral density describe the chain, or the box it is in?
 
@@ -1007,9 +1007,9 @@ def plot_size_collapse(converged, suspect=None, axes=None, title=None,
             lambda v, _: ('%g' % v)))
         _legend(ax, loc='upper right')
         _recede(ax)
-    ax_h.text(0.02, 0.09, 'dashed grey: $D_{\\rm bond}=14,16$, past where '
-                          '$\\beta=0.1$ fills the bond',
-              fontsize=7.5, color=C_REF, transform=ax_h.transAxes)
+    if suspect and suspect_note:
+        ax_h.text(0.02, 0.09, 'dashed grey: %s' % suspect_note,
+                  fontsize=7.5, color=C_REF, transform=ax_h.transAxes)
 
     Ls = np.array([r['L'] for _, r in converged], dtype=float)
     order = np.argsort(Ls)
