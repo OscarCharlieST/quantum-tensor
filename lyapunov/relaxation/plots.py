@@ -881,12 +881,27 @@ def spectral_weights_from_result(result, name='energy_mid', **kwargs):
                                  **kwargs)
 
 
+def _response_of(result, obs):
+    """
+    (times, C) for an observable, recomputed when run_one did not store
+    them. They are a pure function of the spectrum and the weights, so
+    keeping them in the pickle is redundant -- see run_one's
+    `store_response`.
+    """
+    if 'times' in obs:
+        return obs['times'], obs['response']
+    times = np.linspace(0, obs['t_max'], obs['n_times'])
+    return times, resp.response_function(result['omega'], obs['weights'],
+                                         times)
+
+
 def response_from_result(result, name='energy_mid', **kwargs):
     """plot_response straight off a run_one result dict."""
     obs = result['observables'][name]
     kwargs.setdefault('title', _result_title(result, name))
     kwargs.setdefault('c_inf', obs.get('c_inf', 0.0))
-    return plot_response(obs['times'], obs['response'], scales=obs['scales'],
+    times, C = _response_of(result, obs)
+    return plot_response(times, C, scales=obs['scales'],
                          tau_fit=obs['tau_fit'], t_fit_end=obs['t_fit_end'],
                          tau_cross=obs['tau_cross'], **kwargs)
 

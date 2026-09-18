@@ -84,8 +84,19 @@ def build_uniform_thermofield(L, D, beta, steps, noise=SEED_NOISE):
     return psi, energy[-1]
 
 
-def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
-    """Everything for a single system size. Returns a result dict."""
+def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS, store_response=False):
+    """
+    Everything for a single system size. Returns a result dict.
+
+    `store_response` keeps the sampled C(t) trace in the result. Off by
+    default: it is 2 * N_TIMES floats per observable and is a pure function
+    of `omega` and `weights`, both of which are kept, so plots.py recomputes
+    it on demand. At D = 18 that is the difference between ~0.4 MB and
+    ~0.7 MB per entry, and nothing in the pipeline needs it stored.
+
+    Nothing of size dim^2 is ever kept -- not H_tangent, not the
+    eigenvectors. At D = 18 those are 2.5 GB apiece.
+    """
     result = {'L': L, 'D': D, 'beta': beta}
     t0 = clock.time()
 
@@ -108,11 +119,19 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
     )
     result['t_build_tangent'] = clock.time() - t0
     result['dim'] = H_tangent.shape[0]
-    result['hermiticity'] = float(np.max(np.abs(H_tangent - H_tangent.conj().T)))
+    # Row-blocked rather than np.max(np.abs(H - H.conj().T)): that
+    # expression allocates three dim^2 temporaries (conj, subtract, abs),
+    # which at dim ~ 12000 is 7 GB of scratch to compute one number.
+    result['hermiticity'] = float(max(
+        np.abs(H_tangent[i:i + 512] - H_tangent[:, i:i + 512].conj().T).max()
+        for i in range(0, H_tangent.shape[0], 512)))
     result['bond_dims'] = {n: A_L[n].shape for n in sites}
 
     t0 = clock.time()
-    omega, U = la.eigh(H_tangent)
+    # overwrite_a: H_tangent is not needed past this point, and at
+    # dim ~ 12000 the copy eigh would otherwise take is 2.4 GB.
+    omega, U = la.eigh(H_tangent, overwrite_a=True)
+    del H_tangent
     result['t_eigh'] = clock.time() - t0
     result['omega'] = omega
 
@@ -177,8 +196,6 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
         )
         result['observables'][name] = {
             'weights': weights,
-            'times': times,
-            'response': C_t,
             'scales': scales,
             'tau_fit': tau_fit,
             'r_squared': r_squared,
@@ -188,7 +205,10 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
             # question in its cleanest form: A_J(0) finite means diffusive,
             # A_h ~ |w|^-1/2 is the same statement seen from the density.
             'spectral': resp.spectral_exponent(omega, weights, scales),
+            'n_times': N_TIMES,
+            't_max': float(times[-1]),
             'tau_cross': resp.crossing_time(times, C_t, c_inf=c_inf),
+            **({'times': times, 'response': C_t} if store_response else {}),
             'total_weight': float(weights.sum()),
             # What fraction of O's static weight the tangent space sees.
             # Exactly 1 for every observable here, which is worth recording
@@ -234,20 +254,33 @@ def summarize(result):
               f"n_eff={s['n_eff']:.0f}")
 
 
-def main(l_values=L_VALUES):
+def main(l_values=L_VALUES, d_value=None, out_path=None):
+    out_path = out_path or OUT_PATH
     results = []
     for L in l_values:
-        print(f"\n=== L = {L} ===")
-        results.append(run_one(L))
+        print(f"\n=== L = {L}, D = {d_value or D} ===", flush=True)
+        t0 = clock.time()
+        results.append(run_one(L, D=d_value or D))
         summarize(results[-1])
+        # Saved after every L, as in main_bond_scan: the largest system is
+        # the one most likely to run out of memory, and it should not take
+        # the cheaper ones down with it.
+        with open(out_path, 'wb') as f:
+            pickle.dump({'config': {'J': J, 'h': H_FIELD, 'g': G_FIELD,
+                                    'beta': BETA, 'D': d_value or D,
+                                    'imag_steps': IMAG_STEPS,
+                                    'seed_noise': SEED_NOISE},
+                         'results': results}, f)
+        print(f"  [saved {len(results)} entries to {out_path}; "
+              f"L={L} took {clock.time() - t0:.0f}s]", flush=True)
 
-    with open(OUT_PATH, 'wb') as f:
+    with open(out_path, 'wb') as f:
         pickle.dump({'config': {'J': J, 'h': H_FIELD, 'g': G_FIELD,
                                 'beta': BETA, 'D': D,
                                 'imag_steps': IMAG_STEPS,
                                 'seed_noise': SEED_NOISE},
                      'results': results}, f)
-    print(f"\nsaved to {OUT_PATH}")
+    print(f"\nsaved to {out_path}")
 
     print("\n=== convergence check ===")
     for name in results[0]['observables']:
@@ -270,7 +303,7 @@ def main(l_values=L_VALUES):
     return results
 
 
-def main_bond_scan(L=L_FIXED, d_values=D_VALUES):
+def main_bond_scan(L=L_FIXED, d_values=D_VALUES, out_path=None):
     """
     The same analysis at fixed L, scanning bond dimension instead.
 
@@ -286,21 +319,30 @@ def main_bond_scan(L=L_FIXED, d_values=D_VALUES):
     how much of D_peak is physics and how much is the manifold.
 
     eigh dominates and scales as the cube of the tangent dimension, so
-    D=12 costs roughly 11x D=8.
+    D=12 costs roughly 11x D=8. Measured at L=16: eigh ~ dim^2.94 and the
+    tangent build ~ dim^2.5, with dim ~ 39 D^2, giving roughly 16 / 34 / 67
+    minutes at D = 14 / 16 / 18. Memory is the tighter constraint --
+    H_tangent and its eigenvectors are 2 * dim^2 * 16 bytes, i.e. 1.9 / 3.2
+    / 5.1 GB at those same D, before LAPACK workspace.
     """
+    out_path = out_path or BOND_OUT_PATH
     results = []
     for D_val in d_values:
-        print(f"\n=== L = {L}, D = {D_val} ===")
+        print(f"\n=== L = {L}, D = {D_val} ===", flush=True)
+        t0 = clock.time()
         results.append(run_one(L, D=D_val))
         summarize(results[-1])
-
-    with open(BOND_OUT_PATH, 'wb') as f:
-        pickle.dump({'config': {'J': J, 'h': H_FIELD, 'g': G_FIELD,
-                                'beta': BETA, 'L': L,
-                                'imag_steps': IMAG_STEPS,
-                                'seed_noise': SEED_NOISE},
-                     'results': results}, f)
-    print(f"\nsaved to {BOND_OUT_PATH}")
+        # Written after every D, not at the end: the largest D is the one
+        # most likely to exhaust memory or run past a time budget, and
+        # losing the cheap ones with it would be silly.
+        with open(out_path, 'wb') as f:
+            pickle.dump({'config': {'J': J, 'h': H_FIELD, 'g': G_FIELD,
+                                    'beta': BETA, 'L': L,
+                                    'imag_steps': IMAG_STEPS,
+                                    'seed_noise': SEED_NOISE},
+                         'results': results}, f)
+        print(f"  [saved {len(results)} entries to {out_path}; "
+              f"D={D_val} took {clock.time() - t0:.0f}s]", flush=True)
 
     print("\n=== Green-Kubo against bond dimension ===")
     for r in results:
@@ -316,7 +358,23 @@ def main_bond_scan(L=L_FIXED, d_values=D_VALUES):
 
 
 if __name__ == '__main__':
-    if '--bond-scan' in sys.argv:
-        main_bond_scan()
+    if '--l-scan' in sys.argv:
+        kw = {}
+        for i, a in enumerate(sys.argv):
+            if a == '--l-values':
+                kw['l_values'] = [int(x) for x in sys.argv[i + 1].split(',')]
+            if a == '--D':
+                kw['d_value'] = int(sys.argv[i + 1])
+            if a == '--out':
+                kw['out_path'] = sys.argv[i + 1]
+        main(**kw)
+    elif '--bond-scan' in sys.argv:
+        kw = {}
+        for i, a in enumerate(sys.argv):
+            if a == '--d-values':
+                kw['d_values'] = [int(x) for x in sys.argv[i + 1].split(',')]
+            if a == '--out':
+                kw['out_path'] = sys.argv[i + 1]
+        main_bond_scan(**kw)
     else:
         main()

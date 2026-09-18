@@ -5,3 +5,5 @@ lyapunov/tdvp_lyapunov/runs/*.h5
 # Regenerable scan output (~70 s to rebuild via run_relaxation_scan.py)
 lyapunov/relaxation/scan_results.pkl
 lyapunov/relaxation/bond_scan_results.pkl
+lyapunov/relaxation/bond_push_results.pkl
+lyapunov/relaxation/l_push_results.pkl
