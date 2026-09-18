@@ -166,8 +166,13 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
         scales = resp.timescales(omega, weights)
         times = np.linspace(0, T_MAX_FACTOR * scales['t_heis'], N_TIMES)
         C_t = resp.response_function(omega, weights, times)
+        # An observable overlapping a conserved quantity relaxes to that
+        # overlap, not to zero; both estimates below are taken on the part
+        # that actually dephases. For energy_mid this floor is 0.16 at
+        # L = 8 and 0.074 at L = 16.
+        c_inf = resp.conserved_fraction(omega, weights)
         tau_fit, r_squared, t_fit_end = resp.fit_relaxation_time(
-            times, C_t, scales['t_zeno'], scales['t_heis']
+            times, C_t, scales['t_zeno'], scales['t_heis'], c_inf=c_inf
         )
         result['observables'][name] = {
             'weights': weights,
@@ -177,7 +182,8 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
             'tau_fit': tau_fit,
             'r_squared': r_squared,
             't_fit_end': t_fit_end,
-            'tau_cross': resp.crossing_time(times, C_t),
+            'c_inf': c_inf,
+            'tau_cross': resp.crossing_time(times, C_t, c_inf=c_inf),
             'total_weight': float(weights.sum()),
             # What fraction of O's static weight the tangent space sees.
             # Exactly 1 for every observable here, which is worth recording

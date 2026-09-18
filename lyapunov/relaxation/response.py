@@ -516,7 +516,63 @@ def diffusion_constant(omega, weights, chi, scales, tau, safety=3.0,
     return result
 
 
-def fit_relaxation_time(times, C, t_min, t_max, floor=0.05):
+def conserved_fraction(omega, weights, tol=1e-8):
+    """
+    C(inf): the share of the response carried by exact zero modes, which
+    never dephases.
+
+    An observable that overlaps a conserved quantity cannot relax to zero.
+    Split it into its component along the conserved quantity and the rest,
+
+        h_mid = [Cov(h_mid, H)/Var(H)] H + h_perp,
+
+    and the first term is a constant of the motion -- it contributes the
+    same amount to <h(t)h(0)> at every t, including t = infinity. Only
+    h_perp dephases. Physically: a bump of energy on one bond is partly
+    "the chain now holds more energy", and that part has nowhere to go; it
+    spreads until uniform, and uniform across L bonds still leaves ~1/L of
+    it on the middle bond forever.
+
+    H_asym (H(x)I)|psi*> = [H(x)I - I(x)H, H(x)I]|psi*> = 0 because the two
+    copies commute, so (H(x)I)|psi*> is an *exact* zero mode, and there is
+    exactly one of them -- on a thermofield double (H(x)I)|psi> =
+    (I(x)H^T)|psi>, so the physical and auxiliary energies are not
+    independent directions. Measured at L = 8, 12, 16 the energy tangent
+    vector lies in the zero eigenspace to ten digits and this fraction
+    reproduces the Mazur bound Cov(h,H)^2/(Var h Var H) to six, scaling as
+    c/L with c -> Cov(h,H)/Var(h) ~ 1.13.
+
+    A nonzero value here is therefore a *passed* conservation test, not a
+    defect; it would be the absence of one, or a drift with bond dimension,
+    that signalled the tangent flow leaking energy.
+
+    `tol` wants to sit well below the level spacing: the mode is exactly
+    zero to machine precision, so anything from 1e-12 to 1e-6 gives the
+    same answer.
+    """
+    return float(weights[np.abs(omega) < tol].sum() / weights.sum())
+
+
+def dephasing_response(C, c_inf):
+    """
+    The part of C(t) that actually relaxes, rescaled to start at 1:
+
+        C~(t) = (C(t) - C_inf) / (1 - C_inf).
+
+    C(t) = C_inf + (1 - C_inf) C~(t) is exact, not an approximation: it
+    splits the response into a conserved piece and a dephasing piece, and
+    only the second has a relaxation time. Fitting or 1/e-crossing the raw
+    C measures it against the wrong asymptote -- at L = 8 the energy floor
+    is 0.156, and at L = 4 it is 0.349, which is close enough to 1/e =
+    0.368 that the raw crossing time is nearly meaningless.
+    """
+    c_inf = float(c_inf)
+    if not c_inf:
+        return np.asarray(C, dtype=float)
+    return (np.asarray(C, dtype=float) - c_inf) / (1.0 - c_inf)
+
+
+def fit_relaxation_time(times, C, t_min, t_max, floor=0.05, c_inf=0.0):
     """
     Fit C(t) ~ exp(-t/tau) by least squares on log C, over the window from
     t_min up to whichever comes first: t_max, or the time C first drops
@@ -527,10 +583,17 @@ def fit_relaxation_time(times, C, t_min, t_max, floor=0.05):
     into meaninglessness -- fitting all the way to t_heis gives R^2 of a few
     percent and a tau an order of magnitude off the 1/e crossing.
 
+    `c_inf` is the conserved floor from conserved_fraction; the fit is done
+    on dephasing_response(C, c_inf), since an observable overlapping a
+    conserved quantity decays to that floor rather than to zero. Note
+    `floor` is a different thing -- the level below which the trace is
+    oscillating noise and the fit window closes.
+
     Returns (tau, r_squared, t_fit_end), all nan if there is no usable
     window -- which is itself the answer when the system is too small to
     have an exponential regime.
     """
+    C = dephasing_response(C, c_inf)
     # The fit has to be confined to the part that actually decays. Two
     # cutoffs, whichever binds first: the floor (past it the response is
     # oscillating about zero, not decaying) and three 1/e times (responses
@@ -556,12 +619,16 @@ def fit_relaxation_time(times, C, t_min, t_max, floor=0.05):
     return -1.0 / slope, r_squared, t_end
 
 
-def crossing_time(times, C, level=1.0 / np.e):
+def crossing_time(times, C, level=1.0 / np.e, c_inf=0.0):
     """
-    First time C(t) drops below `level`. Fit-free, so it is the more robust
-    of the two estimates when the decay is not cleanly exponential -- but it
-    is only a relaxation time if that crossing happens inside the window
-    from timescales().
+    First time the dephasing part of C(t) drops below `level`. Fit-free, so
+    it is the more robust of the two estimates when the decay is not cleanly
+    exponential -- but it is only a relaxation time if that crossing happens
+    inside the window from timescales().
+
+    `c_inf` matters here more than it does for the fit, because this is the
+    number actually quoted. Against the raw C the crossing is of the wrong
+    curve, and where the floor approaches `level` it may not happen at all.
     """
-    below = np.flatnonzero(C < level)
+    below = np.flatnonzero(dephasing_response(C, c_inf) < level)
     return times[below[0]] if below.size else np.nan

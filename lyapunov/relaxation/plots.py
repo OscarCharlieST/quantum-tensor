@@ -209,7 +209,7 @@ def plot_spectral_weights(omega, weights, scales=None, tau=None, bins=61,
 
 def plot_response(times, response, scales=None, tau_fit=None, t_fit_end=None,
                   tau_cross=None, axes=None, title=None, tau_max_factor=5.0,
-                  t_zoom=None, floor=0.05):
+                  t_zoom=None, floor=0.05, c_inf=0.0):
     """
     The response function C(t), and whether it settles into anything.
 
@@ -285,20 +285,29 @@ def plot_response(times, response, scales=None, tau_fit=None, t_fit_end=None,
     zoom = times <= t_zoom
 
     # --- panel 1: the trace itself
+    # Everything that defines a decay is measured from the conserved
+    # floor, not from zero, so the 1/e level and the fitted model are
+    # drawn where they are actually applied.
+    _lvl = c_inf + (1 - c_inf) / np.e
     ax_lin.axhline(0, color=C_REF, lw=0.8)
-    ax_lin.axhline(1 / np.e, color=C_REF, lw=1, ls=':')
-    ax_lin.text(0.99, 1 / np.e, '$1/e$ ', color=C_REF, fontsize=8,
+    ax_lin.axhline(_lvl, color=C_REF, lw=1, ls=':')
+    ax_lin.text(0.99, _lvl, '$1/e$ ', color=C_REF, fontsize=8,
                 va='bottom', ha='right',
                 transform=ax_lin.get_yaxis_transform())
+    if c_inf:
+        ax_lin.axhline(c_inf, color=C_AUX, lw=1.4, ls='-.',
+                       label=rf'$C_\infty = {c_inf:.3g}$ (conserved)')
     if shade:
         ax_lin.axvspan(t_zeno, t_fit_end, color=C_MODEL, alpha=0.10, lw=0,
                        label='fit window')
     ax_lin.plot(times, C, color=C_DATA, lw=1.8, label='$C(t)$')
     if _finite(tau_fit) and tau_fit > 0:
-        ax_lin.plot(times, np.exp(-times / tau_fit), color=C_MODEL, lw=1.8,
-                    ls='--', label=rf'$e^{{-t/\tau}}$, $\tau = {tau_fit:.3g}$')
+        ax_lin.plot(times, c_inf + (1 - c_inf) * np.exp(-times / tau_fit),
+                    color=C_MODEL, lw=1.8, ls='--',
+                    label=rf'$C_\infty + (1-C_\infty)e^{{-t/\tau}}$, '
+                          rf'$\tau = {tau_fit:.3g}$')
     if _finite(tau_cross):
-        ax_lin.plot([tau_cross], [1 / np.e], ls='none', marker='o', ms=7,
+        ax_lin.plot([tau_cross], [_lvl], ls='none', marker='o', ms=7,
                     mfc='none', mec=C_AUX, mew=2,
                     label=rf'$\tau_{{1/e}} = {tau_cross:.3g}$')
     span = times[-1] - times[0]
@@ -315,9 +324,13 @@ def plot_response(times, response, scales=None, tau_fit=None, t_fit_end=None,
     _legend(ax_lin)
     _recede(ax_lin)
 
-    # --- panel 2: log |C| over the decay, where an exponential is a line
-    nonzero = zoom & (np.abs(C) > 0)
-    ax_log.semilogy(times[nonzero], np.abs(C[nonzero]), color=C_DATA, lw=1.4)
+    # --- panel 2: log |C~| over the decay, where an exponential is a line.
+    # The floor has to come off first: with it in, log|C| flattens onto
+    # log C_inf and no exponential can be read off, however clean the
+    # underlying decay is.
+    Cd = resp.dephasing_response(C, c_inf)
+    nonzero = zoom & (np.abs(Cd) > 0)
+    ax_log.semilogy(times[nonzero], np.abs(Cd[nonzero]), color=C_DATA, lw=1.4)
     if _finite(tau_fit) and tau_fit > 0:
         ax_log.semilogy(times[zoom], np.exp(-times[zoom] / tau_fit),
                         color=C_MODEL, lw=1.8, ls='--',
@@ -325,14 +338,14 @@ def plot_response(times, response, scales=None, tau_fit=None, t_fit_end=None,
         _legend(ax_log, loc='lower left')
     if shade:
         ax_log.axvspan(t_zeno, t_fit_end, color=C_MODEL, alpha=0.10, lw=0)
-    bottom = np.abs(C[nonzero]).min() if nonzero.any() else 1e-4
+    bottom = np.abs(Cd[nonzero]).min() if nonzero.any() else 1e-4
     ax_log.set_ylim(max(bottom, 1e-4), 2.0)
     # A trace that only falls by a factor of a few spans less than a decade,
     # where matplotlib labels no ticks at all by default.
     ax_log.yaxis.set_minor_locator(ticker.LogLocator(subs=(2., 3., 5.)))
     ax_log.yaxis.set_minor_formatter(ticker.FormatStrFormatter('%.3g'))
     ax_log.tick_params(axis='y', which='minor', labelsize=7)
-    ax_log.set_ylabel('$|C(t)|$')
+    ax_log.set_ylabel(r'$|\tilde C(t)|$' if c_inf else '$|C(t)|$')
     ax_log.tick_params(labelbottom=False)
     ax_log.text(0.99, 0.95, f'zoom: $t \\leq {t_zoom:.3g}$', fontsize=8,
                 color=C_REF, ha='right', va='top', transform=ax_log.transAxes)
@@ -342,10 +355,10 @@ def plot_response(times, response, scales=None, tau_fit=None, t_fit_end=None,
     # Only meaningful while C is positive and still above the floor: below
     # it C oscillates about zero, and d ln C/dt then measures the
     # oscillation rather than any decay.
-    good = C > floor
+    good = Cd > floor
     tau_run = np.full_like(times, np.nan)
     if good.sum() > 3:
-        dlogC = np.gradient(np.log(C[good]), times[good])
+        dlogC = np.gradient(np.log(Cd[good]), times[good])
         with np.errstate(divide='ignore', invalid='ignore'):
             tau_run[good] = np.where(dlogC < 0, -1.0 / dlogC, np.nan)
     ax_tau.plot(times, tau_run, color=C_DATA, lw=1.6, label=r'$\tau(t)$')
@@ -357,7 +370,8 @@ def plot_response(times, response, scales=None, tau_fit=None, t_fit_end=None,
         ax_tau.set_ylim(0, np.nanpercentile(tau_run[zoom], 95))
     if shade:
         ax_tau.axvspan(t_zeno, t_fit_end, color=C_MODEL, alpha=0.10, lw=0)
-    ax_tau.set_ylabel(r'$-1 / (d\ln C/dt)$')
+    ax_tau.set_ylabel(r'$-1 / (d\ln \tilde C/dt)$' if c_inf
+                      else r'$-1 / (d\ln C/dt)$')
     ax_tau.set_xlabel('$t$   (zoom)')
     _legend(ax_tau)
     _recede(ax_tau)
@@ -750,6 +764,7 @@ def response_from_result(result, name='energy_mid', **kwargs):
     """plot_response straight off a run_one result dict."""
     obs = result['observables'][name]
     kwargs.setdefault('title', _result_title(result, name))
+    kwargs.setdefault('c_inf', obs.get('c_inf', 0.0))
     return plot_response(obs['times'], obs['response'], scales=obs['scales'],
                          tau_fit=obs['tau_fit'], t_fit_end=obs['t_fit_end'],
                          tau_cross=obs['tau_cross'], **kwargs)
