@@ -475,8 +475,10 @@ Not yet written: the wavevector-resolved energy density needed to turn
    `finiteTDVP.tdvp` run with a small non-uniform perturbation.
 3. **Auxiliary-gauge modes** (caveat above) — needs resolution before the
    spectrum can be read physically.
-4. **Nothing relaxes yet at L=8, D=8** (from the `plots.py` figures, seed 0),
-   and the fitted τ values shouldn't be read as rates. `z_mid`: C(t) levels
+4. **Nothing relaxes yet at L=8, D=8** (from the `plots.py` figures, seed 0;
+   `z_mid` has since been dropped from the default scan, so this is a
+   record), and the fitted τ values shouldn't be read as rates. `z_mid`:
+   C(t) levels
    off at ~0.2–0.25 and stays there past t_heis, so τ_fit ≈ 9 describes the
    approach to a plateau. `energy_mid`: C(t) crosses zero at t ≈ 2.3 and
    then oscillates between 0 and ~0.3 indefinitely. τ_fit = 0.36

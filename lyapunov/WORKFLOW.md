@@ -95,6 +95,12 @@ exponential fits are unreliable here — see below):
 Tangent dimensions 191 / 959 / 1727 / 2495. L = 8 onward agree to ~2% for
 everything except L = 4, which is too small.
 
+`z_mid` and `x_mid` were dropped from the default scan on 2026-09-18 — they
+were generic non-conserved contrasts and carry no transport information, so
+the rows above are a record rather than something the current code
+reproduces. `response.single_copy_onesite` still builds them; see the
+commented lines in `run_relaxation_scan.run_one`.
+
 - **τ(current) ≈ 0.96, independent of L** — the number the current operator
   was added for. Microscopic, as a current relaxation time must be, and two
   to three orders below the `L²/D` profile time. **The wait before

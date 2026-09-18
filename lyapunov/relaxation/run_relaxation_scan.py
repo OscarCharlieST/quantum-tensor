@@ -127,9 +127,16 @@ def run_one(L, D=D, beta=BETA, steps=IMAG_STEPS):
     result['fixed_point_residual'] = float(np.linalg.norm(residual))
 
     mid = sites[len(sites) // 2]
+    # Energy and current only. The single-site z and x responses were here
+    # as generic non-conserved contrasts -- something that should relax to
+    # an intrinsic local rate, against a conserved density that should not
+    # -- and they served that purpose, but they carry no transport
+    # information and cost a diagonalization each. To put them back:
+    #     'z_mid': resp.single_copy_onesite(ops.pauli('z'), mid),
+    #     'x_mid': resp.single_copy_onesite(ops.pauli('x'), mid),
+    # `response.single_copy_onesite` is unchanged and still builds them,
+    # and plots.py still knows their colours and labels.
     observables = {
-        'z_mid': resp.single_copy_onesite(ops.pauli('z'), mid),
-        'x_mid': resp.single_copy_onesite(ops.pauli('x'), mid),
         'energy_mid': resp.single_copy_energy_density(
             mid, J=J, h=H_FIELD, g=G_FIELD
         ),

@@ -9,13 +9,13 @@ already computes -- nothing here re-runs the physics. The thin
 
     import pickle, lyapunov.relaxation.plots as plots
     results = pickle.load(open('lyapunov/relaxation/scan_results.pkl','rb'))['results']
-    plots.spectral_weights_from_result(results[-1], 'z_mid')
-    plots.response_from_result(results[-1], 'z_mid')
+    plots.spectral_weights_from_result(results[-1], 'energy_mid')
+    plots.response_from_result(results[-1], 'energy_mid')
 
 Or, straight out of a live run:
 
     r = run_one(8)
-    plots.plot_spectral_weights(r['omega'], r['observables']['z_mid']['weights'])
+    plots.plot_spectral_weights(r['omega'], r['observables']['energy_mid']['weights'])
 
 `plot_timescale_scan` is the one function here that wants the whole scan
 rather than a single result: how tau behaves across L, whether it sits
@@ -737,7 +737,7 @@ def _result_title(result, name):
             f"beta={result['beta']}, tangent dim={result.get('dim', '?')}")
 
 
-def spectral_weights_from_result(result, name='z_mid', **kwargs):
+def spectral_weights_from_result(result, name='energy_mid', **kwargs):
     """plot_spectral_weights straight off a run_one result dict."""
     obs = result['observables'][name]
     kwargs.setdefault('title', _result_title(result, name))
@@ -746,7 +746,7 @@ def spectral_weights_from_result(result, name='z_mid', **kwargs):
                                  **kwargs)
 
 
-def response_from_result(result, name='z_mid', **kwargs):
+def response_from_result(result, name='energy_mid', **kwargs):
     """plot_response straight off a run_one result dict."""
     obs = result['observables'][name]
     kwargs.setdefault('title', _result_title(result, name))
@@ -755,7 +755,8 @@ def response_from_result(result, name='z_mid', **kwargs):
                          tau_cross=obs['tau_cross'], **kwargs)
 
 
-def plot_result(result, name='z_mid', save_dir=None, prefix='', **kwargs):
+def plot_result(result, name='energy_mid', save_dir=None, prefix='',
+                **kwargs):
     """
     Both figures for one observable. With `save_dir`, writes
     <prefix><name>_spectrum.png and <prefix><name>_response.png there and
@@ -799,9 +800,12 @@ def _cli(argv=None):
                         help='bond dimension (default: run_relaxation_scan.D '
                              'when running; any D when reading --pickle)')
     parser.add_argument('--obs', default='energy_mid',
-                        help="observable name from run_one: energy_mid (the "
-                             "Hamiltonian term at the chain centre), z_mid, "
-                             "x_mid, or 'all'")
+                        help="observable name from run_one: energy_mid "
+                             "(the Hamiltonian term at the chain centre), "
+                             "current_mid, current_total, or 'all'. z_mid "
+                             "and x_mid are no longer in the default scan, "
+                             "so they are only available from a --pickle "
+                             "written before that changed.")
     parser.add_argument('--pickle', default=None,
                         help='plot from a saved scan_results.pkl instead of '
                              'running; picks the entry matching --L (and --D '
