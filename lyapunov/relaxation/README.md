@@ -214,7 +214,7 @@ Scan defaults in `run_relaxation_scan.py`:
 | `BETA` | 0.1 | see below |
 | `D` | 8 | same for every L, so the tangent dimension grows only through L |
 | `L_VALUES` | 8, 12, 16 | |
-| `IMAG_STEPS` | 60 | too low for D >= 16 — see "Cost and convergence" |
+| `IMAG_STEPS` | 240 | raised from 60 on 2026-09-18, see below |
 | `SEED_NOISE` | 0 | none needed, see below |
 
 **On β = 0.1** (changed from β = 1 on 2026-09-17). Hydrodynamics is a
@@ -355,8 +355,10 @@ gives after `L * steps` TDVP updates).
 
 **So `IMAG_STEPS` is the cheap lever, not `D`.** Raising it 60 -> 240 buys
 25x in residual at D = 16 and costs seconds; raising D 16 -> 24 buys
-nothing and costs 6x the eigh. The default 60 predates this measurement
-and is too low for D >= 16.
+nothing and costs 6x the eigh. **The default is now 240** (was 60, which
+predated this measurement). Every result in this file predates the change
+and was computed at 60 — the pickles record `imag_steps` in their config,
+so which is which is recoverable.
 
 **What that makes affordable** (this machine has 15.5 GB):
 

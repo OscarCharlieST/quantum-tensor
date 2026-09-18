@@ -17,8 +17,9 @@ by guessing. Measured 2026-09-18 (see README, "Cost and convergence"):
 - **D = 16 is enough at every L tested**, because that is where the residual
   stops being limited by the manifold and starts being limited by the build.
   D = 20 and D = 24 are no better at any step count.
-- **IMAG_STEPS = 60 is too low for D >= 16.** Raising it to 240 buys 25x at
-  D = 16 and costs seconds. Past 240 there is only roundoff scatter.
+- **IMAG_STEPS = 60 was too low for D >= 16**, and the default is now 240:
+  that buys 25x at D = 16 and costs seconds. Past 240 there is only
+  roundoff scatter.
 
 A small residual is necessary for a converged spectrum, not sufficient --
 it says psi* is close to the fixed point, not that every tangent mode is

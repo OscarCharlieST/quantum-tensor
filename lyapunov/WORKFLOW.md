@@ -161,7 +161,7 @@ two levers cost **the same** per unit of resolution. The split is physical:
 D fixes variational error and **saturates at 16**; L fixes finite-size
 error and does not. `relaxation/README.md`, "Cost and convergence", has the
 residual-vs-(D, steps) tables and the affordability table. Headlines:
-`IMAG_STEPS = 60` is too low for D ≥ 16 (240 buys 25x for seconds);
+`IMAG_STEPS` raised 60 → 240 (25x in residual at D = 16, for seconds);
 L = 24 D = 16 is 1.8 h and 10.8 GB; L = 32 D = 32 would be 10 days and
 303 GB, to buy nothing.
 

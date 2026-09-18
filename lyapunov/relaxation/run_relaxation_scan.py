@@ -35,7 +35,13 @@ J, H_FIELD, G_FIELD = 1, 0.25, -0.525   # tilted Ising defaults (1702.08894)
 BETA = 0.1                              # inverse temperature of psi_uniform
 D = 8                                   # bond dimension, same for every L
 L_VALUES = [8, 12, 16]
-IMAG_STEPS = 60                         # TDVP steps for the imaginary-time build
+# 240, not 60: below D = 16 the fixed-point residual is limited by the
+# variational manifold, but at D >= 16 it is limited by this build instead,
+# and 60 steps leaves a factor of 25 on the table (3.3e-09 -> 1.3e-10 at
+# L = 16, D = 16). The build is seconds against an eigh of hours, so there
+# is no reason to economize here. Past 240 it is roundoff scatter, not
+# improvement. See convergence_probe.py and README, "Cost and convergence".
+IMAG_STEPS = 240                        # TDVP steps for the imaginary-time build
 SEED_NOISE = 0.0                        # none needed, see build_uniform_thermofield
 T_MAX_FACTOR = 3.0                      # response evaluated to this * t_heis
 N_TIMES = 6000
