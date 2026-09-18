@@ -134,22 +134,36 @@ Done, and it changed the conclusions. `relaxation/README.md`, "Measured
 (2026-09-18, evening)", has the numbers and the figures. Three things to
 carry forward:
 
-- **Larger L is the good lever; larger D is not.** At β = 0.1 the
-  thermofield double is nearly a product of Bell pairs (`s_min/s_max` at
-  the middle bond is 1.8e-11 by D = 16), so bond dimension past ~12 adds
-  numerically null directions. D = 14 and D = 16 at L = 16 are the runs
-  that fail a collapse test that L = 24 and L = 32 pass. **Treat the
-  D ≥ 14 rows of the bond scan as unreliable**, not as the best data.
-- **`A_h(ω)` is converged in L** — L = 24 and L = 32 agree to ~1% over the
-  resolved band. First evidence here that a spectral density is a property
-  of the chain rather than of the box.
 - **The earlier bound `D ≤ 0.045` is withdrawn.** It was evaluated on an
   L = 16 spectrum; the same argument gives `D ≤ 0.107` at L = 32 and is
   still loosening. `D_peak` remains an overestimate, but by ~5x, not ~10x.
+- **`A_h(ω)` agrees to ~1% between L = 24 and L = 32** over the resolved
+  band. Read with the caveat below: both are at D = 12.
+- ~~**Larger L is the good lever; larger D is not**, because past D ≈ 12
+  the added directions are numerically null and D = 14, 16 fail the
+  collapse test.~~ **Withdrawn the same day.** Every hard diagnostic says
+  D = 14, 16 are the *better* runs — exactly one zero mode at every D, the
+  Mazur floor D-independent to six digits, static capture 1.0000000, and a
+  residual falling 1.1e-07 → 2.9e-08 → 3.3e-09. `s_min/s_max` = 1.8e-11 is
+  five orders above float64 epsilon, and nothing in the pipeline divides by
+  a Schmidt value (`V_L` completes an isometry; `C = Λ A_R` never inverts
+  Λ), so there is no amplification mechanism. Disagreement with D ≤ 12 is
+  equally consistent with D = 12 being unconverged — which the residual
+  says it is. **So L = 24 and L = 32 at D = 12, residuals 3.7e-07 and
+  6.3e-07, are themselves under-converged, and the collapse above may be
+  two runs agreeing at the same wrong D.**
 
-Cost, for planning: L = 24 → dim 8879, 22 min; L = 32 → dim 12335, 57 min,
-~7 GB resident. `eigh` is ~90% of it and scales as roughly `dim^3`, so
-L = 40 (dim ~15800) would be ~2 h and ~12 GB.
+**Cost, measured.** `dim = Σ_n (4 D_{n-1} - D_n) D_n ≈ 3 L D²`, exact on
+all ten runs; `t_eigh = 2.91e-9 · dim^2.942` (max residual 2.6%);
+`mem ≈ 1.48 · 2 · 16 · dim²`. So `t ~ L^2.94 D^5.88` — but the tangent
+bandwidth is 16–19 at every L and D, so level spacing `~ 1/(L D²)` and the
+two levers cost **the same** per unit of resolution. The split is physical:
+D fixes variational error and **saturates at 16**; L fixes finite-size
+error and does not. `relaxation/README.md`, "Cost and convergence", has the
+residual-vs-(D, steps) tables and the affordability table. Headlines:
+`IMAG_STEPS = 60` is too low for D ≥ 16 (240 buys 25x for seconds);
+L = 24 D = 16 is 1.8 h and 10.8 GB; L = 32 D = 32 would be 10 days and
+303 GB, to buy nothing.
 
 ## Validations passed
 
@@ -185,14 +199,14 @@ Fix: derive `C^n` from the bond matrices (`C^n = Λ^{n-1} A_R^n`,
 1. ~~**β = 1**, against the β ≈ 1e-2 in `active.ipynb`, because at high
    temperature the thermofield double is effectively rank 2 and most of a
    D=8 tangent space would sit on numerically null directions.~~
-   **Answered 2026-09-18, and the concern was real.** At β = 0.1 and
-   L = 16, `s_min/s_max` at the middle bond is 1.5e-8, 2.2e-9, 3.6e-9,
-   8.4e-10, 1.2e-10, 1.8e-11 for D = 6…16: past D ≈ 12 the added
-   directions *are* numerically null, and the D = 14 and D = 16 runs are
-   exactly the ones that fail the collapse test. The resolution is not to
-   raise β — the standing default stays 0.1, where hydrodynamics is
-   expected — but to stop treating bond dimension as the lever and raise L
-   instead. See `relaxation/README.md`, "Measured (2026-09-18, evening)".
+   **Answered 2026-09-18: not a problem at β = 0.1.** The fixed-point
+   residual falls to ~1e-10 by D = 16 and stops there because the
+   imaginary-time build, not the manifold, has become the limiting error.
+   Small Schmidt values (`s_min/s_max` = 1.8e-11 at D = 16) are still five
+   orders above float64 epsilon and nothing inverts them. β = 0.01 *is*
+   unusable — `s_min` reaches 9e-16 — but β = 0.1 is fine, and the
+   standing default stays there. See `relaxation/README.md`, "Cost and
+   convergence".
 2. **`x_mid` relaxes faster than its own Zeno time**, so there is no
    exponential regime and `tau_fit` correctly returns `nan`. Only the 1/e
    crossing means anything there.

@@ -214,7 +214,7 @@ Scan defaults in `run_relaxation_scan.py`:
 | `BETA` | 0.1 | see below |
 | `D` | 8 | same for every L, so the tangent dimension grows only through L |
 | `L_VALUES` | 8, 12, 16 | |
-| `IMAG_STEPS` | 60 | TDVP steps for the imaginary-time build |
+| `IMAG_STEPS` | 60 | too low for D >= 16 — see "Cost and convergence" |
 | `SEED_NOISE` | 0 | none needed, see below |
 
 **On β = 0.1** (changed from β = 1 on 2026-09-17). Hydrodynamics is a
@@ -298,6 +298,81 @@ sweep silently lands in a different gauge. The symptom is a
 `fixed_point_residual` far *larger* than `||H_asym psi||` — impossible for
 a projection, and the check worth keeping in mind for any new overlap built
 on this machinery.
+
+## Cost and convergence: how to choose L and D (2026-09-18)
+
+This supersedes every earlier claim in this file about which of `L` and `D`
+is the better lever.
+
+**Cost.** The tangent dimension is `sum_n (4 D_{n-1} - D_n) D_n`, i.e.
+`~ 3 L D^2` in the bulk; the formula reproduces all ten measured runs
+exactly. `eigh` dominates everything else:
+
+    t_eigh = 2.91e-9 * dim^2.942       (6 runs with dim > 2000, max resid 2.6%)
+    memory = 1.48 * 2 * 16 * dim^2     bytes (matrix + eigenvectors + workspace)
+
+so `t ~ L^2.94 D^5.88` and `mem ~ L^2 D^4`. **Doubling D costs 59x in time
+and 16x in memory; doubling L costs 7.7x and 4x.**
+
+**L and D are equally priced per unit of resolution, though.** The tangent
+bandwidth is 16-19 at *every* L and D tested — it is set by local energy
+scales, not extensive ones — so the mean level spacing is
+`bandwidth/dim ~ 1/(L D^2)`. Halving it means doubling `dim` either way,
+which costs the same 7.7x whichever lever is pulled. The choice between
+them is therefore physical, not computational:
+
+- **D controls variational error**, and saturates — see below.
+- **L controls finite-size error**, and has not saturated.
+
+So take D to its knee and spend everything else on L.
+
+**Where D's knee is.** `convergence_probe.py` measures it without paying
+for a run: `||P H_asym psi*||` needs only the tangent *vector*, so it skips
+both the `dim^2` allocation and the `dim^3` eigh and costs seconds rather
+than hours. Residual against D and against the number of imaginary-time
+steps:
+
+| L = 16 | steps 60 | 120 | 240 |
+|---|---|---|---|
+| D = 12 | 1.1e-07 | 3.0e-08 | 2.8e-08 |
+| D = 16 | 3.3e-09 | 4.4e-10 | **1.3e-10** |
+| D = 20 | 5.4e-09 | 8.3e-10 | 3.0e-10 |
+| D = 24 | 2.8e-09 | 4.3e-10 | 9.8e-11 |
+
+| | L = 24, 60 | L = 32, 60 | L = 32, 240 |
+|---|---|---|---|
+| D = 12 | 3.7e-07 | 6.3e-07 | 7.8e-08 |
+| D = 16 | 1.1e-08 | 6.2e-09 | **1.2e-09** |
+| D = 20 | 5.3e-09 | 2.4e-08 | 1.5e-09 |
+
+**D = 16 is enough, because that is where it hits the build floor.** At
+D = 12 the residual is manifold-limited — refining `dt` stops helping at
+~3e-08. From D = 16 up it is limited by the imaginary-time build instead,
+and D = 20 and D = 24 are no better than D = 16 at any step count. Past
+240 steps there is scatter, not improvement (D = 16, L = 16: 1.3e-10 at
+240, 4.7e-10 at 480, 1.9e-11 at 960 — roundoff, near what double precision
+gives after `L * steps` TDVP updates).
+
+**So `IMAG_STEPS` is the cheap lever, not `D`.** Raising it 60 -> 240 buys
+25x in residual at D = 16 and costs seconds; raising D 16 -> 24 buys
+nothing and costs 6x the eigh. The default 60 predates this measurement
+and is too low for D >= 16.
+
+**What that makes affordable** (this machine has 15.5 GB):
+
+| run | dim | eigh | memory |
+|---|---|---|---|
+| L = 24, D = 16 | 15615 | 1.8 h | 10.8 GB |
+| L = 32, D = 16 | 21759 | 4.7 h | 20.9 GB |
+| L = 48, D = 16 | 43151 | 17.4 h | 51 GB |
+| L = 32, D = 32 | 82943 | 10 days | 303 GB |
+
+The last row is why large D is not the way: twenty times this machine's
+memory, to buy directions the residual says are already resolved at D = 16.
+
+**Caveat.** A small residual is necessary for a converged spectrum, not
+sufficient — it says `psi*` is close to the fixed point, not that every
+tangent mode is resolved. It is a cheap *screen* for D, not a proof.
 
 ## The current relaxation time (2026-09-17)
 
@@ -456,45 +531,24 @@ as the test: `|slope| << 1` means the value means something.
 
 ### Results
 
-L scan at D = 8, and bond scan at L = 16 (`figures/D8_green_kubo.png`,
-`figures/L16_green_kubo.png`):
+`figures/D8_green_kubo.png` (L scan), `figures/L16_green_kubo.png` (bond
+scan). `D_peak` runs 0.357, 0.412, 0.445 over L = 8, 12, 16 and 0.448 →
+0.465 over D = 6 → 12; the admissible `eta` window opens from empty to 0.70
+decades, entirely from its lower edge as the level spacing shrinks.
 
-| L | eta window | D_win | slope | D_peak |
-|---|---|---|---|---|
-| 4 | empty | - | - | 0.2171 |
-| 8 | empty | - | - | 0.3570 |
-| 12 | empty | - | - | 0.4115 |
-| 16 | [0.075, 0.140] (0.27 dec) | 0.3129 | 0.543 | 0.4446 |
+**There is no plateau anywhere.** The slope sits at 0.54-0.68 and does not
+improve as the window widens, so `D ~ 0.45` is a crossover bound, not a
+measurement. Two specific reasons it is biased *high*:
 
-| D | n_eff | eta window | D_win | slope | D_peak |
-|---|---|---|---|---|---|
-| 6 | 27 | empty | - | - | 0.4479 |
-| 8 | 115 | [0.075, 0.140] (0.27 dec) | 0.3129 | 0.543 | 0.4446 |
-| 10 | 186 | [0.046, 0.136] (0.47 dec) | 0.2520 | 0.679 | 0.4571 |
-| 12 | 322 | [0.027, 0.135] (0.70 dec) | 0.2165 | 0.670 | 0.4647 |
-
-**1. `D_peak` is converged in bond dimension**: 0.448, 0.445, 0.457, 0.465,
-a 4% spread with no trend. It is still climbing in `L` (0.217 -> 0.445).
-
-**2. Bond dimension is the better lever on the window**, because the
-tangent dimension goes as ~39 D^2 at L = 16 while the L scan buys modes
-slowly. The window opens from empty to 0.70 decades, entirely from the
-*lower* edge as the level spacing shrinks.
-
-**3. There is still no plateau anywhere.** The slope sits at 0.54-0.68 and
-does not improve with the wider window. So `D ~ 0.45` is a crossover bound,
-not a measurement.
-
-**4. `D_peak` is read outside its own validity window.** `eta_peak` is
-0.35, 0.35, 0.34 against window upper bounds of 0.140, 0.136, 0.135 — the
-maximum always sits *above* the admissible range, where the Lorentzian is
-already cutting into the correlator's decay. So it is biased high.
-
-**5. `D_win` is worse.** It falls 0.313, 0.252, 0.217 as the window widens,
-because widening extends it further down the rising flank toward the
-finite-size floor. It tracks where the window sits, not the transport. Kept
-in the figures and labelled as such: watching it slide while `D_peak` holds
-still is the evidence that the window moves and the physics does not.
+- **`D_peak` is read outside its own validity window.** `eta_peak` is
+  0.35, 0.35, 0.34 against window upper bounds of 0.140, 0.136, 0.135 — the
+  maximum always sits *above* the admissible range, where the Lorentzian is
+  already cutting into the correlator's decay.
+- **`D_win` tracks the window, not the transport.** It falls 0.313, 0.252,
+  0.217 as the window widens, because widening extends it down the rising
+  flank toward the finite-size floor. Kept in the figures and labelled as
+  such: watching it slide while `D_peak` holds still is the evidence that
+  the window moves and the physics does not.
 
 Not yet compared against the `D` from the nonlinear Gaussian-width fits in
 `qtensor.visualise`, which remains the external validation.
@@ -684,61 +738,27 @@ low-frequency region and bias the exponent **negative** — the direction
 that makes a non-diffusive system look diffusive. Dropping it moves the
 exponent by +0.08.
 
-**Result, L = 16:**
+**The result that survives: `D_peak` is an overestimate.** Reading
+`(pi/2) A_J(w_min)/Var(H)` at L = 16 gives 0.85, 0.36, 0.064, 0.054 across
+D = 6, 8, 10, 12 — it collapses as the resolution improves, while `D_peak`
+sits at 0.45 throughout. That is what "read outside its own validity
+window" was always going to mean.
 
-| D | w_min | exponent | weight below w_min | D from A_J | D_peak |
-|---|---|---|---|---|---|
-| 6 | 0.430 | −0.05 | 0.234 | 0.853 | 0.448 |
-| 8 | 0.100 | +0.67 | 0.0088 | 0.359 | 0.445 |
-| 10 | 0.062 | +1.39 | 0.0032 | 0.064 | 0.457 |
-| 12 | 0.036 | +1.41 | 0.0024 | 0.054 | 0.465 |
+The quantitative bound that went with it (`D <= 0.045`, from a weight
+budget below `w_min`) is **withdrawn**: the inequality is sound, but the
+spectrum it was evaluated on was not converged. The same budget at L = 32
+gives `D <= 0.107` and is still loosening. See the next section.
 
-`D from A_J` is `(pi/2) A_J(w_min)/Var(H)`. It collapses as the resolution
-improves — 0.85, 0.36, 0.064, 0.054 — while `D_peak` sits at 0.45
-throughout. **The Green-Kubo crossover estimate is an overestimate of
-roughly an order of magnitude**, which is what "read outside its own
-validity window" was always going to mean.
+**The two observables disagree**: the current says `A_J -> 0` (`D = 0`),
+the density says `A_h ~ w^-1/2` (`D > 0`). At the time the current looked
+like the trustworthy one, because only 0.24% of its weight sat below its
+resolution limit against 26% for the density.
 
-**A weight-budget argument makes that kernel-independent.** For
-`D_peak = 0.465` you need `A_J(0) = 2 D chi/pi = 5.80`, which would put
-`5.80 * 0.0357 / 8.15 = 2.5%` of the current's weight below `w_min`. The
-measured figure is **0.24%**, ten times less — a count of modes in an
-interval, no smoothing anywhere. Taking `A_J` non-decreasing on
-`[0, w_min]` gives `A_J(0) <= weight_below * Var(J)/w_min` and hence
-`D <= 0.045 at L = 16, D = 12`.
-
-> ~~`D <= 0.045`~~ — **withdrawn.** The inequality is sound; the spectrum
-> it was evaluated on was not converged. See the next section: the same
-> budget at L = 32 gives `D <= 0.107`, and the bound is still loosening.
-
-**The two observables disagree, and the diagnostics say why.**
-
-| | current | density |
-|---|---|---|
-| exponent at D = 10, 12 | +1.39, +1.41 | −0.42, −0.56 |
-| diffusive value | 0 | −1/2 |
-| verdict | vanishing: `D -> 0` | looks diffusive |
-| weight below `w_min` | 0.24% | **26%** |
-
-The current says `A_J -> 0`, i.e. `D = 0`; the density says
-`A_h ~ w^-1/2`, i.e. `D > 0`. They cannot both be right, and the last row
-is the reason to distrust the density: a quarter of its weight lies below
-its own resolution limit, so that exponent is fitted on the shoulder of an
-unresolved pile-up. That is also exactly where the hydrodynamic modes are
-— the slowest diffusive mode sits at `D (2 pi/L)^2 ~ 0.07` at L = 16,
-against `w_min = 0.108`. **We are a factor of ~1.5 in resolution away from
-seeing the slowest hydrodynamic mode at all**, which is the sharpest
-statement of what is missing.
-
-The current, by contrast, has only 0.24% of its weight unresolved — which
-at the time read as `w^1.4` being measured rather than extrapolated.
-
-> **Both halves of that turned out to be wrong**, and in an instructive
-> way: a small *unresolved* weight is not the same as a *converged* one.
-> Only 0.24% of the current's weight sat below L = 16's resolution limit,
-> but raising L put ten times more weight there. Little weight below the
-> limit says the kernel is not being asked to extrapolate; it says nothing
-> about whether the modes that would live there exist yet.
+> **That reasoning was wrong, instructively.** A small *unresolved* weight
+> is not a *converged* one. Raising L put ten times more weight below the
+> limit. Little weight down there says the kernel is not being asked to
+> extrapolate; it says nothing about whether the modes that belong there
+> exist yet.
 
 ### Measured (2026-09-18, evening): L = 24 and L = 32 at D = 12
 
@@ -802,34 +822,35 @@ steeper than the diffusive -1/2 and consistently with ~24% of its weight
 below the limit. The `w^1.41` quoted in the previous section was two
 points coinciding.
 
-**Bond dimension is exhausted as a lever at beta = 0.1.** `s_min/s_max` at
-the middle bond of `psi*` is 1.5e-8, 2.2e-9, 3.6e-9, 8.4e-10, 1.2e-10,
-1.8e-11 at D = 6...16: the thermofield double at this temperature is
-nearly a product of Bell pairs, so past D ~ 12 the added directions are
-numerically null and the tangent modes living on them carry arbitrary
-weight. The collapse test sees this independently — D = 14 and D = 16 at
-L = 16 are the curves that miss the collapse in both panels of
-`size_comparison_collapse.png`, while L = 24 and L = 32 at D = 12 land on
-top of each other. **The large-L runs are the trustworthy ones and the
-large-D runs are not**, which is the reverse of what was assumed when the
-bond push was planned.
+> **The D = 14, 16 runs also miss the collapse, and this section
+> originally read that as those runs being unreliable. That was wrong** —
+> see "Cost and convergence" above. Every hard diagnostic says they are
+> the *better* runs: exactly one zero mode at every D, the Mazur floor
+> D-independent to six digits, static capture 1.0000000, and a residual
+> that keeps falling (1.1e-07, 2.9e-08, 3.3e-09 at D = 12, 14, 16).
+> Disagreement with D <= 12 is equally consistent with D = 12 being
+> unconverged, which the residual says it is. **The corollary is
+> uncomfortable: L = 24 and L = 32 at D = 12 carry residuals of 3.7e-07
+> and 6.3e-07, comparable to L = 16 at D = 8, so the collapse above may be
+> two calculations agreeing at the same under-converged bond dimension.**
+> Settling it needs one run at L = 24, D = 16.
 
 **"Resolve the slowest hydrodynamic mode" was the wrong target.** The
 resolution limit does improve with L — `w_min` for the density is 0.1077,
-0.0561, 0.0392 at L = 16, 24, 32, falling as `L^-1.46`, which no bond
-dimension could achieve. But the slowest diffusive mode sits at
-`D (2 pi/L)^2` and falls as `L^-2`, which is faster. The ratio of what we
-must resolve to what we can resolve is 14, 16, 20 at L = 16, 24, 32:
-**the target recedes faster than the resolution improves**, so no
-accessible L reaches it. Panel c of the collapse figure is this statement.
+0.0561, 0.0392 at L = 16, 24, 32, falling as `L^-1.46`. But the slowest
+diffusive mode sits at `D (2 pi/L)^2` and falls as `L^-2`, which is
+faster, so the ratio of what must be resolved to what can be is 14, 16, 20
+at L = 16, 24, 32. **The target recedes faster than the resolution
+improves**, and no accessible L reaches it. Panel c of the collapse figure
+is this statement.
 
-The question worth asking instead is the one the collapse test answers:
-does `A_h(w)` agree between system sizes over the band that *is* visible?
-It does, from L = 24 up. So the remaining honest gap is not resolution but
-interpretation — `A_h ~ w^-0.8` over `w` in `[0.11, 0.6]` is a converged
-measurement of something, and whether a band that far above the
-hydrodynamic window should look like `w^-1/2` at all is a physics question
-rather than a numerical one.
+The answerable question is the one the collapse test asks: does `A_h(w)`
+agree between system sizes over the band that *is* visible? It does, from
+L = 24 up. The honest gap is then interpretation rather than resolution —
+whether a band that far above the hydrodynamic window should look like
+`w^-1/2` at all is a physics question. Measuring a finite-`q` density
+correlator, and fitting `w(q) = D q^2` at several small-but-nonzero `q`,
+would sidestep the `w -> 0` limit entirely.
 
 ## Code
 
@@ -845,6 +866,15 @@ rather than a numerical one.
   for one ket direction, via mixed-gauge environments and
   `apply_Heff_parts`.
 - `assemble_tangent_hamiltonian` — stacks the blocks.
+
+`convergence_probe.py` — picks `D` and `IMAG_STEPS` before paying for a
+run. `probe(L, D, steps)` returns `||P H_asym psi*||` using only the
+tangent *vector*, skipping the `dim^2` assembly and the `dim^3` eigh, and
+`estimate(dim)` gives the eigh time and peak memory a full run would cost.
+Seconds against hours; this is what "Cost and convergence" was measured
+with.
+
+    python lyapunov/relaxation/convergence_probe.py --L 32 --D 12,16,20 --steps 60,240
 
 Verified at L=6, D=6, d=2 (random state, tilted Ising MPO): dimension 59,
 matching `Σ_n (d·D_{n-1} − D_n)·D_n` computed independently from the bond
@@ -965,13 +995,12 @@ Not yet written: the wavevector-resolved energy density needed to turn
    to the discrete-spectrum obstruction above rather than a slow rate. The
    running τ(t) never plateaus for either observable.
 
-   *Partly settled since.* D **is** the lever: the tangent dimension goes
-   as ~39 D² at L = 16, and `n_eff` for the total current rises 27 → 322
-   over D = 6–12 where the whole L = 8–16 scan bought only 53 → 114. τ_1/e
-   for `energy_mid` is now flat in bond dimension (1.401 / 1.408 / 1.395 /
-   1.400 at D = 6/8/10/12).
+   *Partly settled since.* τ_1/e for `energy_mid` is flat in bond
+   dimension (1.401 / 1.408 / 1.395 / 1.400 at D = 6/8/10/12). Which of L
+   and D buys resolution is answered in "Cost and convergence": neither —
+   they cost the same per unit of level spacing, and D saturates at 16.
 
-   The exponential fit, though, is settled the other way: **there is no
+   The exponential fit is settled the other way: **there is no
    exponential regime for `energy_mid` and the code now says so.** See
    "Why the fit window is what it is" below. The intermediate claim that
    subtracting `C_inf` rescued it (τ_fit 11.7 → 0.42, R² 0.06 → 0.97) was
@@ -986,9 +1015,9 @@ Not yet written: the wavevector-resolved energy density needed to turn
    box. The weight-budget bound loosens monotonically — `D ≤ 0.027, 0.052,
    0.107` as the calculation improves — and has not saturated, so no upper
    bound on `D` can be quoted yet. The exponents are not converged either
-   (±0.6 scatter for the current). What *is* converged is `A_h(ω)` itself,
-   to ~1% between L = 24 and L = 32. The lever that is exhausted is bond
-   dimension, not system size: β = 0.1 makes the TFD nearly a product of
-   Bell pairs, so D > 12 adds numerically null directions, and D = 14, 16
-   are the runs that fail the collapse test. See "Measured (2026-09-18,
-   evening)".
+   (±0.6 scatter for the current). `A_h(ω)` agrees to ~1% between L = 24
+   and L = 32 — but both are at D = 12, whose residual is 100x above the
+   D = 16 floor, so that agreement is not yet evidence of convergence.
+   **The next run is L = 24, D = 16** (1.8 h, 10.8 GB), which is the first
+   point with both L and D past their knees. See "Cost and convergence"
+   and "Measured (2026-09-18, evening)".
