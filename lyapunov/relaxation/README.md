@@ -29,29 +29,22 @@ tangent-space/quasiparticle-ansatz literature (Haegeman, Verstraete et
 al.), and a direct generalization of the single-site effective Hamiltonian
 this codebase already builds for TDVP.
 
-1. Bring `psi_uniform` to canonical form. Both gauges are needed — a
-   tangent vector at site n uses left-orthogonal tensors to its left and
-   right-orthogonal ones to its right — and they must agree bond-for-bond.
-   One sweep in each direction does *not* guarantee that (each clips bond
-   dimensions to its own staircase), so three sweeps are taken.
+1. Bring `psi_uniform` to canonical form. A tangent vector at site n uses 
+   left-orthogonal tensors to its left and right-orthogonal ones to its 
+   right and they must agree bond-for-bond. Three sweeps ensure this.
 2. At each site n, compute the **null-space tensor** `V_L^n`: reshape the
    left-orthogonal tensor `A^n` from `(d, Dl, Dr)` to a `(d·Dl, Dr)`
    isometry and take an orthonormal basis for the orthogonal complement of
    its column space. Any tangent direction at site n is `B^n = V_L^n X^n`
-   for a free matrix `X^n`. This is the gauge-fixing that removes the
-   redundancy between "moving `A^n`" and "absorbing the opposite move into
-   a neighbouring tensor", and it is what makes different sites' tangent
-   vectors mutually orthogonal and orthogonal to `psi_uniform` itself.
+   for a free matrix `X^n`. This is the gauge-fixing that ensures mutual
+   orthogonaloty.
 
    **Edge case: `d·Dl = Dr` exactly.** A square isometry is a full unitary,
    so its column space is everything and `V_L^n` has zero columns — that
-   site contributes no tangent directions. Not a bug: every variation of a
-   square-unitary `A^n` is pure gauge (`A^n Y`, cancellable against the
-   neighbouring tensor), exactly what the gauge condition excludes. The
-   physical freedom near that bond is carried by neighbouring sites'
+   site contributes no tangent directions. 
+   The physical freedom near that bond is carried by neighbouring sites'
    tangent vectors instead, and the dimension count
-   `Σ_n (d·D_{n-1} − D_n)·D_n` stays correct with some terms zero. Observed
-   in practice at the first two sites of an L=6, D=6 chain.
+   `Σ_n (d·D_{n-1} − D_n)·D_n` just has some terms zero. 
 3. Each variation `|Φ_n(X^n)> = A_L^1...A_L^{n-1} (V_L^n X^n)
    A_R^{n+1}...A_R^N` is one basis direction; the tangent space is the span
    over all n and all `X^n`, of dimension `Σ_n (d·D_{n-1} − D_n)·D_n`.
@@ -63,11 +56,10 @@ this codebase already builds for TDVP.
    site/bond effective-Hamiltonian split) is the *same* projector as the
    `V_L^n` construction: substituting `I_n = A^n(A^n)† + V_L^n(V_L^n)†` into
    the first term of each summand and cancelling against the second leaves
-   exactly `P_{≤n-1}⊗V_L^n(V_L^n)†⊗P_{>n}`. It is an operator-level
-   restatement, not an alternative route — TDVP only ever *applies*
-   `P_tangent` to one vector, so it never needs an explicit basis and can
-   skip `V_L` entirely. Diagonalizing needs the basis, so `V_L^n` stays
-   necessary. The payoff is that every block, diagonal and off-diagonal
+   exactly `P_{≤n-1}⊗V_L^n(V_L^n)†⊗P_{>n}`. Diagonalizing needs the basis, 
+   so `V_L^n` stays necessary. 
+   
+   The payoff is that every block, diagonal and off-diagonal
    alike, is `updatemethod.apply_Heff_parts` evaluated against the
    appropriate environments and then sandwiched by `V_L`.
 5. Diagonalize with `scipy.linalg.eigh`.
