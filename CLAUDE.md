@@ -138,12 +138,12 @@ Two subprojects, split because the original question had two different answers:
   (null-space tensors `V_L^n`) and the projected Hamiltonian, reusing `updatemethod.apply_Heff_parts`
   and `operators.contract_left/right` for every matrix element; `response.py` turns the spectrum into
   a response function and a relaxation time; `run_relaxation_scan.py` drives an L scan (~70 s).
-- `lyapunov/tdvp_lyapunov/` (active) — full Lyapunov spectrum (non-negative half; the rest follows by
-  `±λ` pairing) of single-site TDVP under the *symmetric* thermofield Hamiltonian, by Benettin QR with
-  a Ginelli backward pass for covariant vectors, hunting hydrodynamic Lyapunov modes. Tangent vectors
-  are real coordinates in the orthonormal `V_L` frame of a *single* canonicalization pass per point
-  (`frame.py`); only Hilbert-space overlaps ever cross between points, which is what makes the gauge
-  drift harmless. The one-step tangent map is the exact generator `−i(H_tan X + conj(K X))`
+- `lyapunov/tdvp_lyapunov/` (active) — full Lyapunov spectrum of single-site TDVP under the
+  *symmetric* thermofield Hamiltonian, by Benettin QR with a Ginelli backward pass for covariant
+  vectors, hunting hydrodynamic Lyapunov modes. Tangent vectors are real coordinates in the
+  orthonormal `V_L` frame of a *single* canonicalization pass per point (`frame.py`); only
+  Hilbert-space overlaps ever cross between points, which is what makes the gauge drift
+  harmless. The one-step tangent map is the exact generator `−i(H_tan X + conj(K X))`
   (`tangent_generator.py`), where `K` is the second fundamental form contracted with `(1−P)Hψ`, with
   polar-factor transport between frames and the exponential applied to the vectors rather than formed
   (`expm_action`, 38x faster than `scipy.expm` at 2n ≈ 4000). A finite-difference route served as the
@@ -151,12 +151,15 @@ Two subprojects, split because the original question had two different answers:
   local-temperature template modes and measures where their weight sits in the spectrum — the
   hydrodynamic-mode diagnostic. Drivers: `run_lyapunov.py` (spectrum) and `run_template.py`
   (`k = 1` — seed the tangent flow with one local-temperature template and watch it; minutes rather
-  than hours, because the cost is the generator and transport, which don't depend on `k`). **New runs
-  default to β = 0.1** (2026-09-17): hydrodynamics is a high-temperature expectation, and the
-  temperature scan found β = 0.1 better conditioned than β = 1 and already saturated. Results tables
-  predating that are at β = 1 and labelled so. `lyapunov/relaxation/` keeps `BETA = 1.0`. Big h5 files
-  go to `C:\Users\charl\lyapunov_runs` (outside OneDrive). The subproject README has results and next
-  steps.
+  than hours, because the cost is the generator and transport, which don't depend on `k`). Runs since
+  2026-09-17 take `k = 2n` — both halves of the spectrum — so the `±λ` pairing residual is measured,
+  not assumed, and serves as a health check. **New runs default to β = 0.1** (2026-09-17):
+  hydrodynamics is a high-temperature expectation, and the temperature scan found β = 0.1 better
+  conditioned than β = 1 and already saturated. The README's results table is the 2026-09-21 L and D
+  scan at β = 0.1, `k = 2n` and `SEED_NOISE = 0`; β = 1 numbers survive only in the template,
+  temperature and dispersion sections, labelled so. `lyapunov/relaxation/` keeps `BETA = 1.0`.
+  Big h5 files go to `C:\Users\charl\lyapunov_runs` (outside OneDrive). The subproject README has
+  results and next steps.
 
 Key result worth not re-deriving: `H_asym` is exactly Hermitian and annihilates the thermofield double
 exactly, so the tangent-space projection has a real spectrum and **all Lyapunov exponents at that fixed

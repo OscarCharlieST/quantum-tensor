@@ -23,15 +23,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 RUNS = 'C:/Users/charl/lyapunov_runs'     # h5 files live outside OneDrive
 
 SCANS = {
-    'L_scan': ('D = 4, L scan', [
-        ('L = 8',  f'{RUNS}/L8_D4_beta1_dt025.h5'),
-        ('L = 12', f'{RUNS}/L12_D4_beta1.h5'),
-        ('L = 16', f'{RUNS}/L16_D4_beta1.h5'),
+    'L_scan_beta0.1_k2n': ('beta = 0.1, D = 4, L scan', [
+        ('L = 8',  f'{RUNS}/L8_D4_beta0.1_k2n.h5'),
+        ('L = 12', f'{RUNS}/L12_D4_beta0.1_k2n.h5'),
+        ('L = 16', f'{RUNS}/L16_D4_beta0.1_k2n.h5'),
     ]),
-    'D_scan': ('L = 8, D scan', [
-        ('D = 4',  f'{RUNS}/L8_D4_beta1_dt025.h5'),
-        ('D = 8',  f'{RUNS}/L8_D8_beta1.h5'),
-        ('D = 12', f'{RUNS}/L8_D12_beta1.h5'),
+    'D_scan_beta0.1_k2n': ('beta = 0.1, L = 8, D scan', [
+        ('D = 4',  f'{RUNS}/L8_D4_beta0.1_k2n.h5'),
+        ('D = 8',  f'{RUNS}/L8_D8_beta0.1_k2n_ns.h5'),
+        ('D = 12', f'{RUNS}/L8_D12_beta0.1_k2n.h5'),
     ]),
     'dt_route': ('L = 8, D = 4: time step and route', [
         ('Route B, dt = 0.05',  f'{RUNS}/L8_D4_beta1.h5'),

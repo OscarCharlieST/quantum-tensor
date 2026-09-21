@@ -235,8 +235,8 @@ picture of Leviatan et al. (arXiv:1702.08894, the source of the default
    built first, used for the cross-check, and removed on 2026-09-17 once
    the generator was both validated against it (one-step map to `O(dt³)`,
    full spectrum to ~0.005) and faster at every size (see "Cost").
-3. **β = 0.1 is the standing default** (2026-09-17; was β ≈ 1 for the first
-   scan). Hydrodynamics is a high-temperature expectation, so low
+3. **β = 0.1 is the standing default** (2026-09-17; was β ≈ 1 before that).
+   Hydrodynamics is a high-temperature expectation, so low
    temperature is the wrong place to hunt for it. The temperature scan
    below also shows β = 0.1 is *better* conditioned (`s_min` 0.21 vs 0.096,
    pairing residual five times smaller) and already saturated — β = 0.01
@@ -251,8 +251,8 @@ picture of Leviatan et al. (arXiv:1702.08894, the source of the default
 5. **Ginelli from the start**: every `R` and periodic `Q` + frame are stored.
 6. **Only the non-negative half** (`k = n`): the other half follows from the
    `±λ` pairing of a Hamiltonian flow. Consistent with every run so far (no
-   exponent below −0.01 in any half spectrum), but the pairing has not been
-   checked directly with a `k = 2n` run.
+   exponent below −0.01 in any half spectrum); runs since 2026-09-17 take
+   `k = 2n` anyway, and the measured pairing residual is the health check.
 7. **Large run files live outside OneDrive**, in `C:\Users\charl\lyapunov_runs`
    (`--out-dir`): several GB, rewritten every block. Logs stay in `runs/`.
 
@@ -432,107 +432,55 @@ revisited, note CuPy 14 requires numpy >= 2, which this repo cannot take
 (`np.product` in `updatemethod.exact`); pin `cupy-cuda12x==13.6.0` and
 register its DLL directories before `import cupy`.
 
-## Results: first scan (2026-09-16, β = 1)
+## Results: L and D scan (2026-09-21, β = 0.1, k = 2n)
 
-### Runs
+Five runs under `H_sym`, all with `SEED_NOISE = 0`: 250 blocks at
+dt = 0.05, a 240-step imaginary-time build, tangent vectors switched on at
+t = 8 (160 transient steps), both halves of the spectrum. h5 files in
+`C:\Users\charl\lyapunov_runs`; per-run figures
+`figures/<run>_{spectrum,convergence,pairing}.png`, cross-run
+`figures/compare_{L,D}_scan_beta0.1_k2n.png` (`compare_runs.py`, window
+t > 11).
 
-| run | route | dt | blocks | tangent vectors from | h5 |
-|---|---|---|---|---|---|
-| L8_D4_beta1 | B | 0.05 | 288 of 400 (crashed in the since-replaced SVD transport; salvaged) | t = 2 | `runs/` |
-| L12_D4_beta1 | B | 0.05 | 400 | t = 2 | `runs/` |
-| L8_D8_beta1 | A ×16 | 0.05 | 250 | t = 8 | `C:\Users\charl\lyapunov_runs` |
-| L8_D4_beta1_dt025 | A ×16 | 0.025 | 600 | t = 8 | same |
-| L16_D4_beta1 | A ×16 | 0.05 | 300 | t = 8 | same |
-| L8_D12_beta1 | A ×16 | 0.05 | 200 | t = 8 | same |
+| run | n | λ_max | Σλ | max pairing | drift (last 25%) | Σλ⁺ |
+|---|---|---|---|---|---|---|
+| L8_D4 | 303 | +0.575 | −3.6e-3 | 1.5e-2 | 0.029 | 62.6 |
+| L12_D4 | 495 | +0.710 | −2.3e-2 | 2.0e-2 | 0.048 | 113.6 |
+| L16_D4 | 687 | +0.638 | −8.7e-2 | 1.5e-2 | 0.026 | 157.6 |
+| L8_D8_ns | 959 | +0.615 | −1.1e-2 | 1.5e-2 | 0.029 | 218.9 |
+| L8_D12 | 1967 | +0.522 | −3.1e-2 | 7.1e-3 | 0.014 | 393.6 |
 
-All start from the imaginary-time thermofield double
-(`build_uniform_thermofield`, seed 0, 60 steps) and evolve under `H_sym`
-with Lanczos TDVP. These runs predate 2026-09-18 and so used
-`SEED_NOISE = 1e-2`, which is now known to be unnecessary and to dominate
-the fixed-point residual; they have not been repeated noiseless. Per-run figures: `figures/<run>_{spectrum,
-convergence, clv*}.png` (CLVs at ~60% of each run, the rest used as the
-Ginelli backward transient). Cross-run: `figures/compare_*.png`
-(`compare_runs.py`, window t > 11).
+Max pairing is `max |λ_i + λ_{2n+1−i}|`, drift the largest change in any
+running exponent over the last quarter of the run, Σλ⁺ the sum of the
+positive exponents.
 
-### Health of every run
+`_ns` = no seeding noise. All five runs are noiseless; the tag exists only
+to stop this D = 8 rerun overwriting the noise-seeded 2026-09-17 file of
+the same name, which gives λ_max = 0.529 against 0.615 here. That file also
+used 60 imaginary-time steps against 240, so the two builds differ in more
+than the noise.
 
-- Energy ⟨H_sym⟩ conserved to 2–6e-13 over the whole trajectory.
-- Smallest Schmidt value anywhere: 0.09 (D = 4), 0.07 (D = 8), 0.04
-  (D = 12). No conditioning trouble at β = 1.
-- No exponent below −0.01 in any non-negative half. The last few sit at
-  −0.003 to −0.008 — the expected slow `1/T` bias of the exact zeros.
+### Finding
 
-### Statistics (window t > 8)
-
-| run | n | λ_0 | Σλ/L | Σλ/n | frac. \|λ\| < 0.02 |
-|---|---|---|---|---|---|
-| L8 D4 (B) | 303 | 0.325 | 3.07 | 0.081 | 0.20 |
-| L8 D4 dt 0.025 (A) | 303 | 0.356 | 3.28 | 0.087 | 0.18 |
-| L12 D4 (B) | 495 | 0.324 | 3.19 | 0.077 | 0.21 |
-| L16 D4 (A) | 687 | 0.424 | 3.84 | 0.089 | 0.18 |
-| L8 D8 (A) | 959 | 0.428 | 15.4 | 0.128 | 0.11 |
-| L8 D12 (A) | 1967 | 0.411 | 28.2 | 0.115 | 0.12 |
-
-### Findings
-
-1. **Route and time step do not matter.** L = 8, D = 4, Route B at
-   dt = 0.05 vs Route A at dt = 0.025 over the same window t ∈ [8, 16.4]:
-   deciles of the spectrum agree to 0.005–0.01, Σλ 24.5 vs 25.7, and the
-   sorted spectra overlay to ~0.005 everywhere except the top few
-   (`compare_dt_route.png`). The top few differ by up to 0.03, which is the
-   size of their window-to-window fluctuation (next point).
-2. **Stationarity: the top of the spectrum is noisy; the bulk and bottom
-   are not.** Estimates over successive 3-time-unit windows: the first
-   window after the tangent vectors start is 15–30% low at the top in every
-   run (vector alignment, plus the trajectory still settling); after that
-   the mean of the top five fluctuates by ±15% with no consistent trend in
-   most runs. The median exponent and the bottom 20 are stable across all
-   windows. Two runs are still drifting at the end: L = 12 (Σλ/L climbs
-   2.6 → 3.7 from t = 8 to 22 while its median `s_min` falls 0.19 → 0.16)
-   and D = 12 (27 → 30 over its shorter run). **So λ_0 is only good to
-   ~±15% in this scan; the shape of the spectrum below the top ~5% is
-   reliable.**
-3. **Extensive chaos, per tangent dimension.** At D = 4, L = 8 and L = 16
-   collapse onto one curve of λ_i against i/2n across the entire spectrum
-   (`compare_L_scan.png`); L = 12 sits ~10% below throughout, consistent
-   with it being the drifting run whose average includes the early low
-   windows. Σλ/n is the right normalization (0.081–0.089 for L = 8, 16);
-   Σλ/L is not, because n/L grows with L as the edge staircase becomes a
-   smaller fraction (37.9, 41.3, 42.9 for L = 8, 12, 16).
-4. **D dependence is strong and not monotone** (`compare_D_scan.png`).
-   Σλ/n: 0.08 (D = 4), 0.128 (D = 8), 0.115 (D = 12); λ_0 saturates near
-   0.41–0.43 from D = 8. The fraction of near-zero exponents halves from
-   D = 4 to D ≥ 8, and at D ≥ 8 the spectrum approaches zero linearly then
-   drops sharply in the last ~1%. D = 12 below D = 8 may be the short,
-   still-rising D = 12 run rather than physics. D dependence is the object
-   of study, not a convergence error — but one more D = 12 run of D = 8
-   length is needed before reading the non-monotonicity.
-5. **Lyapunov vectors: fast = short wavelength; slow = unstructured by
-   this statistic.** The covariant vectors with the largest exponents put
-   their energy-profile power near `q = π`, and the long-wavelength
-   fraction rises almost monotonically as `λ → 0` — but in the near-zero
-   bins only to the flat-spectrum value, not above it (0.31 vs 0.29 at
-   L8 D4, 0.11 vs 0.13 at L16, and so on). So this establishes a depletion
-   of long wavelengths at the *top*, not an enrichment at the bottom. It is
-   a bin-averaged statistic over 100–400 vectors, which would dilute a
-   handful of genuine modes; **superseded by the template analysis below**,
-   and its code (`q_weight_by_exponent`, `plot_q_weight`) and figures were
-   removed on 2026-09-17.
-
-End-to-end validation of the pipeline is finding 1 together with
-"Validation results" (rungs 1–3) and "Route B" (one-step map agreement
-`O(dt³)`, `K` vs finite-differenced projector `O(ε²)`).
+**The D scan collapses.** At L = 8, D = 4, 8 and 12 lie on one curve of
+`λ_i` against `i/2n` across the whole spectrum
+(`compare_D_scan_beta0.1_k2n.png`), with D = 8 slightly *above* the other
+two rather than between them — the ordering of a convergence wobble, not of
+a D trend. This supersedes the earlier β = 1 reading of a strong,
+non-monotone D dependence. Three things changed at once (β = 1 → 0.1, the
+seeding noise, and a D = 12 run now as long as the others), so it does not
+say which of them carried that reading.
 
 ## Hydrodynamic modes: the template analysis (2026-09-17, k = 2n)
 
 `L16_D4_beta1_k2n` — L = 16, D = 4, k = 2n = 1374, 250 blocks, 39 min,
-2.1 GB. Both halves of the spectrum.
+2.1 GB. Both halves of the spectrm. Trying to cheat by only solving for positive exponents lead to spurious enrichment near zero exponent.
 
-> An earlier pass computed on the non-negative half only (k = n) reported
-> enrichment in the near-zero cluster. **That was an artefact of
-> conditioning on the half**, and it has been removed along with its
-> figures. Only 23–48% of each template lay in the computed half — rising
-> with q — which is why k = 2n was needed.
+
+
+
+
+
 
 **The statistic.** The energy-density profile is real-linear in the tangent
 vector, so the amplitude at wavevector `q_k` is a linear functional whose
@@ -549,17 +497,7 @@ orthonormal Gram–Schmidt vectors at a stored block and measure the
 divided by `m/k`, the share a uniform spread would give. 1 is chance, and
 the comparison is valid across bands and band sizes. Covariant vectors are
 used only to *build* candidate modes — they are not orthonormal, so they
-give no clean decomposition — while the GS filtration is used to *measure*.
-
-**Why the negative half is not derivable from the positive half.** The flow
-is Hamiltonian, so the tangent map preserves ω and
-`ω(E^λ, E^μ) = 0 unless λ + μ = 0`: ω is constant along the flow while the
-pair's norms grow as `e^{(λ+μ)t}`, so the form must vanish unless the
-exponents cancel. Each contracting direction is therefore the symplectic
-conjugate of exactly one expanding direction. But the expanding half spans
-a *Lagrangian* subspace (ω vanishes identically on it), and a Lagrangian
-subspace does not determine a complement — there is an infinite family. The
-contracting vectors carry genuinely new information.
+give no clean decomposition — while the GS filtration is used to w information.
 
 **Spectrum-level pairing holds.** `Σλ = −0.139`, which is 0.14% of `Σ|λ|`;
 the residual `λ_i + λ_{2n+1−i}` has rms 0.0014 and max 0.015 (5% of
@@ -567,8 +505,7 @@ the residual `λ_i + λ_{2n+1−i}` has rms 0.0014 and max 0.015 (5% of
 level spacings — as expected from a finite averaging time.
 
 **Vector-level conjugacy is not resolvable here, by two independent
-limits.** The spectrum is dense (1374 exponents in [−0.29, +0.30]), so
-individual Oseledets directions are near-degenerate and numerically
+limits.** The spectrum is dense (1374 exponents in [−0.29, +0.30]), sual Oseledets directions are near-degenerate and numerically
 arbitrary within a cluster; and the Ginelli backward pass loses column
 independence at this size (the CLV matrix has condition number 2e17,
 against a well-conditioned ~1e1 for a 120-vector band). So the symplectic
@@ -592,16 +529,9 @@ averaged over 11 blocks, m = 120 of 1374:
 - **The long-wavelength temperature template lives on the *contracting*
   directions**, not on the near-zero ones: bottom band 1.69 at q = 0
   falling monotonically to ~1.0 at q = π, top band 0.44 rising to 0.81.
-  Both near-zero bands sit at chance (0.8–1.13).
-- **Why the k = n reading was wrong.** Within the non-negative half the
-  weight is depleted at the top, which — normalized to that half — reads as
-  enrichment near zero. The real signal was always the top-band depletion.
-- **Also retracted from that pass:** it read the k = 0 template as "the
-  conserved total energy, which must sit at λ = 0, so the statistic passes
-  its check". Wrong: the template is the *physical-copy* energy `H⊗I`,
-  while the flow conserves `⟨H_sym⟩`. `⟨H⊗I⟩` is conserved by the exact
-  dynamics but not by the manifold flow, so it is under no obligation to
-  sit at zero — and it does not.
+  Both near-zero bands sit at chance
+
+ does not.
 
 **The asymmetry is the symplectic structure, not a basis artefact.** The
 Gram–Schmidt basis is the forward Oseledets filtration and so is not
@@ -647,24 +577,14 @@ opposite of the worry.** The smallest Schmidt value *rises* from 0.096 at
 (0.048 → 0.009). `Σλ` stays within 0.013 of zero. The concern that the
 nearly-rank-1 β = 1e-2 thermofield double would leave the tangent space
 built on numerically null directions does not materialize: the evolution
-fills the bond dimension before the tangent vectors are switched on.
-(Written at the time as "the noise seeding plus 160 steps of real-time
-`H_sym` evolution"; the noise turns out to be doing none of that work — see
-`relaxation/README.md`, "On the seeding noise". The runs below did use
-`noise = 1e-2`, so their `ψ*` carries that artefact, but the bond dimension
-would have filled without it.) **Nothing here blocks going to β = 1e-2.**
-
-**2. The flow saturates by β = 0.1.** The β = 0.1 and β = 0.01 spectra lie
-on top of each other over the whole range (λ_max 0.533 vs 0.542), while
-β = 1 is visibly less chaotic (0.436). So the infinite-temperature limit is
-already reached at β = 0.1 for this L and D, and β = 0.01 buys nothing —
-worth knowing before spending runs on even higher temperatures.
+fills the bond dimension before the tangent vectors oingt
+2 higher temperatures.
 
 **3. The temperature/time-shift split survives and strengthens.** The
 contracting-band enrichment of the local-temperature template at the
 longest wavelength goes 1.37 → 1.67 → 1.66, and the expanding-band
 depletion is ~0.22–0.27 at q = 0 at every β. The effect is not a
-low-temperature artefact.
+low3temperature artefact.
 
 **4. But the *wavevector selectivity* is a β = 1 feature.** At β = 1 the
 enrichment falls monotonically with q, 1.28 at q = 0 to 0.88 at q = π — long
@@ -674,7 +594,7 @@ perturbation aligns with the contracting directions about equally. A
 hydrodynamic mode needs long wavelengths to be *distinguished*; that scale
 separation is present at β = 1 and largely gone at high temperature.
 Caveat: L = 8 resolves only 7 wavevectors, so this should be rechecked at
-L = 16 before being leaned on — the β = 1, L = 16 run does show the clean
+L = 16 before being leaned on — the β = 1, L = 16 run does show the 4lean
 monotone decay.
 
 **5. Candidate modes stay clean at every temperature** (`compare_beta_modes.png`):
@@ -809,19 +729,18 @@ not for reading any one vector.
    D-dependence of q0 at the best available wavevector resolution. Retuned
    from beta = 0.01 to the new default; the scan showed 0.1 and 0.01 give
    the same spectrum, so there is no reason to pay for the colder one.
-5. **Longer D = 12 run**, before reading the D dependence of the spectrum
-   (finding 4) or lambda_0.
-6. Rung 4 (D = 1 mean field) — still undone, low priority now that the
-   generator is validated three other ways. See item 7: the by-hand tangent
+5. Rung 4 (D = 1 mean field) — still undone, low priority now that the
+   generator is validated three other ways. See item 6: the by-hand tangent
    basis wanted there is the same object.
-7. **Noiseless seeding, and an exact tangent basis at infinite temperature**
+6. **Noiseless seeding, and an exact tangent basis at infinite temperature**
    (idea, not started). `relaxation/` dropped its `noise = 1e-2` seed on
    2026-09-18 and its fixed-point residual fell from 7e-2 to 1e-7; the seed
    turned out to be unnecessary, because `left_orthogonal_tensor` keeps the
    zero singular values and fills their columns with an arbitrary
    orthonormal completion, so the evolution walks off the rank-deficient
-   boundary by itself. Every run in this file used the seed. Two versions of
-   the idea, and they are not equally promising.
+   boundary by itself. Every run in this file predating 2026-09-18 used the
+   seed; the 2026-09-21 scan does not. Two versions of the idea, and they
+   are not equally promising.
 
    *The cheap version — just set `noise = 0` — probably changes little
    here, and the reason is worth recording.* The blocker in this subproject
