@@ -60,8 +60,7 @@ class mps:
         return new_instance
 
     def __len__(self):
-        return len(self.tensors)
-    
+        return len(self.tensors)    
 
     def save(self, filename, **kwargs):
         """
@@ -137,6 +136,26 @@ class mps:
         print(top_str)
         print(mid_str)
         print(bot_str)
+
+    def add(self, other, weight=1, max_bond_dim=np.inf):
+        """
+        Add two MPS states together, recompress to max_bond_dim if nessecary.
+        Adds like [self -> self + weight * other]
+        Mutates self in place. 
+        Adding two states is not generally norm-preserving,
+        so the true norm of self+weight*other is returned.
+        """
+        for site in self.sites:
+            M1 = self.tensors[site]
+            M2 = other[site]
+            d, Dl1, Dr1 = M1.shape
+            _, Dl2, Dr2 = M2.shape
+            assert d == M2.shape[0], "Physical dimension of states must match."
+            M_new = np.zeros((d, Dl1+Dl2, Dr1+Dr2), dtype=M1.dtype)
+            M_new[:, :Dl1, :Dr1] = M1
+            M_new[:, Dl1:, Dr1:] = weight * M2
+            self.tensors[site] = M_new
+        return self.left_orthogonal(max_bond_dim)
 
     def apply(self, operator, max_bond_dim=np.inf):
         """
