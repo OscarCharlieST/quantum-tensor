@@ -236,23 +236,15 @@ picture of Leviatan et al. (arXiv:1702.08894, the source of the default
    the generator was both validated against it (one-step map to `O(dt³)`,
    full spectrum to ~0.005) and faster at every size (see "Cost").
 3. **β = 0.1 is the standing default** (2026-09-17; was β ≈ 1 before that).
-   Hydrodynamics is a high-temperature expectation, so low
-   temperature is the wrong place to hunt for it. The temperature scan
-   below also shows β = 0.1 is *better* conditioned (`s_min` 0.21 vs 0.096,
+   Hydrodynamics is a high-temperature expectation and the temperature scan
+   shows β = 0.1 is *better* conditioned (`s_min` 0.21 vs 0.096,
    pairing residual five times smaller) and already saturated — β = 0.01
-   buys nothing. `run_lyapunov.py` and `run_template.py` default to it.
-   **Known tension, kept in view:** the *q-selectivity* of the template
-   enrichment was a β = 1 feature and is nearly flat at β ≤ 0.1 (finding 4
-   of the temperature scan), on L = 8, which resolves only 7 wavevectors.
-   Any q-resolved result taken at the new default needs L = 16 before it is
-   leaned on. Target regime D = 4–12, L = 8–16; develop at the bottom.
+   buys diminished returns. `run_lyapunov.py` and `run_template.py` default to it.
+   Known tension is that wavelength enrichment stronger at low temperature.  Target regime D = 4–12, L = 8–16; develop at the bottom.
 4. **Lanczos integrator**, after fixing it (see below); `exact_method()`
    for the smallest validation cases only.
 5. **Ginelli from the start**: every `R` and periodic `Q` + frame are stored.
-6. **Only the non-negative half** (`k = n`): the other half follows from the
-   `±λ` pairing of a Hamiltonian flow. Consistent with every run so far (no
-   exponent below −0.01 in any half spectrum); runs since 2026-09-17 take
-   `k = 2n` anyway, and the measured pairing residual is the health check.
+6. **Calculate full spectrum, not half** While pairing implies we only need to calculate one half of spectrum, in practice convergence in small modes is hard, and without full spectrum these modes are more muddled.
 7. **Large run files live outside OneDrive**, in `C:\Users\charl\lyapunov_runs`
    (`--out-dir`): several GB, rewritten every block. Logs stay in `runs/`.
 
@@ -362,7 +354,12 @@ All in this folder; run from the repo root.
   timestamped log `runs/queue2.log`.
 - `validate_frame.py` (rung 1: frame primitives, retraction order, gauge
   invariance of a step), `validate_benettin.py [2|3]` (rungs 2-3, on the
-  Route B map).
+  Route B map), `validate_tangent_swap.py` (rung 4: the physical/ancilla
+  swap involution on the tangent space), `validate_swap_flow.py`
+  (rung 5: whether the sectors survive a run — and they do not at D ≥ 8,
+  where the state itself leaves the symmetric sector during the transient).
+  See [`SWAP_SYMMETRY.md`](SWAP_SYMMETRY.md) for both, and for what breaks
+  them.
 
 ### Lanczos fix in `qtensor/simulation/updatemethod.py`
 

@@ -325,37 +325,31 @@ before you commit. Big h5 files go outside OneDrive.
 | 7 | energy profiles, cosine transforms; figures | `analysis.*`, `plots.py`, `compare_runs.py` |
 | 8 | template modes, spectral enrichment, candidate HLMs | `hlm.*`, `run_hlm.py` |
 
-### Results of the first scan (β = 1)
+### L and D scan (2026-09-21, β = 0.1, k = 2n)
 
-Six runs: L = 8, 12, 16 at D = 4; D = 4, 8, 12 at L = 8; plus a dt/route
-check. All healthy (energy to 1e-13, `s_min` ≥ 0.04, no significantly
-negative exponent in any half spectrum).
+Five runs under `H_sym`, `SEED_NOISE = 0`, 250 blocks at dt = 0.05, 240
+imaginary-time steps, transient 160. `_ns` = no seeding noise, a tag only,
+to avoid overwriting the 2026-09-17 D = 8 file. Figures
+`<run>_{spectrum,convergence,pairing}.png`,
+`compare_{L,D}_scan_beta0.1_k2n.png`.
 
-- **Route- and dt-independent**: Route B dt = 0.05 and Route A dt = 0.025
-  agree across the spectrum to ~0.005.
-- **Extensive per tangent dimension**: L = 8 and 16 collapse on λ_i vs
-  i/2n; normalize by n, not L.
-- **Top ~5% of the spectrum noisy (±15%) and slow to become stationary**;
-  bulk and near-zero end reliable. Two runs (L = 12, D = 12) still drifting.
-- **Strong, non-monotone D dependence** (D = 8 above D = 12), not yet
-  trustworthy because the D = 12 run was short.
-- **Hydrodynamic signature (2026-09-17), and its correction the same day.**
-  The bin-averaged long-wavelength fraction found nothing (it averages over
-  the whole near-zero cluster). Asking where the long-wavelength *template*
-  sits does find structure: the local-temperature mode
-  a_k = 2 realify(P sum_j cos(q_k j) h_j |psi>), decomposed over the
-  orthonormal Gram-Schmidt basis. On the non-negative half it looked like
-  1.4-1.8x enrichment in the near-zero cluster; **the k = 2n run showed
-  that was an artefact of conditioning on that half.** With both halves:
-  the template sits on the *contracting* directions (1.69x at q = 0,
-  decaying monotonically to ~1 at q = pi) and avoids the expanding ones
-  (0.44x), with the near-zero bands at chance. Its symplectic partner
-  J a_k -- the local time-shift template -- mirrors this exactly (top 1.70,
-  bottom 0.37), which is what confirms the asymmetry is the symplectic
-  structure rather than a bias of the forward-filtration basis.
-  Run with `run_hlm.py`; figures `<run>_hlm_{enrichment,candidates,candidates_neg}.png`.
+| run | n | λ_max | Σλ | max pairing | drift (last 25%) | Σλ⁺ |
+|---|---|---|---|---|---|---|
+| L8_D4 | 303 | +0.575 | −3.6e-3 | 1.5e-2 | 0.029 | 62.6 |
+| L12_D4 | 495 | +0.710 | −2.3e-2 | 2.0e-2 | 0.048 | 113.6 |
+| L16_D4 | 687 | +0.638 | −8.7e-2 | 1.5e-2 | 0.026 | 157.6 |
+| L8_D8_ns | 959 | +0.615 | −1.1e-2 | 1.5e-2 | 0.029 | 218.9 |
+| L8_D12 | 1967 | +0.522 | −3.1e-2 | 7.1e-3 | 0.014 | 393.6 |
 
-### Temperature scan (2026-09-17)
+**The D scan collapses.** At L = 8, D = 4, 8 and 12 lie on one curve of
+λ_i against i/2n across the whole spectrum, with D = 8 slightly *above*
+the other two — the ordering of a convergence wobble, not of a D trend.
+This supersedes the β = 1 reading of a strong, non-monotone D dependence.
+Three things changed at once (β, the seeding noise, and a D = 12 run now
+as long as the others), so it does not say which carried that reading.
+his data supercedes intial rscans with k=n and beta=1, which produced ficticious signals.
+T
+ Temperature scan (2026-09-17)
 
 L = 8, D = 8, full spectrum, beta = 1 / 0.1 / 0.01 (`compare_beta.py`).
 
