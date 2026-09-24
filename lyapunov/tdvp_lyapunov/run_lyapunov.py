@@ -52,6 +52,16 @@ def parse():
     p.add_argument('--blocks', type=int, default=100)
     p.add_argument('--tau', type=int, default=1, help='TDVP steps per QR')
     p.add_argument('--transient', type=int, default=0, help='steps before tangent vectors start')
+    p.add_argument('--sector', default='none', choices=['none', 'even', 'odd'],
+                   help='restrict the run to one swap sector; k defaults '
+                        'to the whole sector')
+    p.add_argument('--project-every', type=int, default=10,
+                   help='with --sector, re-project the vectors onto it '
+                        'every this many blocks')
+    p.add_argument('--symmetrize-every', type=int, default=0,
+                   help='project the state onto the swap-even sector every this many '
+                        'transient steps (0 = off). The transient is where the '
+                        'asymmetry is injected; see SWAP_SYMMETRY.md')
     p.add_argument('--k', default='half', help="'half' (n), 'full' (2n) or an integer")
     p.add_argument('--method', default='lanczos', choices=['lanczos', 'exact'])
     p.add_argument('--store-Q-every', type=int, default=10,
@@ -73,12 +83,20 @@ def main():
 
     frame = Frame(psi, a.D)
     n = frame.n
-    k = {'half': n, 'full': 2 * n}.get(a.k, None)
-    if k is None:
-        k = int(a.k)
+    sector = {'none': 0, 'even': +1, 'odd': -1}[a.sector]
+    if sector and a.k == 'half':          # the default: take the sector
+        k = None                          # benettin sizes it from Sigma
+    else:
+        k = {'half': n, 'full': 2 * n}.get(a.k, None)
+        if k is None:
+            k = int(a.k)
     smin = min(s.min() for s in frame.schmidt_values().values())
-    print(f"L={a.L} D={a.D} beta={a.beta}: E/L = {energy / a.L:.4f}, n = {n}, k = {k}, "
+    print(f"L={a.L} D={a.D} beta={a.beta}: E/L = {energy / a.L:.4f}, n = {n}, "
+          f"k = {k if k is not None else a.sector + ' sector'}, "
           f"bond dims {frame.bond_dims()}, s_min = {smin:.1e}")
+    if a.symmetrize_every:
+        print(f"    swap-even projection every {a.symmetrize_every} "
+              f"step(s) of the {a.transient}-step transient")
 
     t0 = clock.time()
     psi1 = tdvp_step(psi, H_sym, a.dt, method)
@@ -90,7 +108,7 @@ def main():
     T = parallel_transport(frame, Frame(psi1, a.D))
     t_tr = clock.time() - t0
     t0 = clock.time()
-    Q = propagate(np.eye(2 * n, k), A, T, A, a.dt)
+    Q = propagate(np.eye(2 * n, k if k is not None else n), A, T, A, a.dt)
     t_map = clock.time() - t0
     per_step = t_step + t_gen + t_tr + t_map
     print(f"one TDVP step: {t_step * 1e3:.0f} ms; generator {t_gen:.1f} s; "
@@ -102,10 +120,15 @@ def main():
 
     os.makedirs(a.out_dir, exist_ok=True)
     tag = f"_{a.tag}" if a.tag else ''
-    path = os.path.join(a.out_dir, f"L{a.L}_D{a.D}_beta{a.beta:g}{tag}.h5")
+    # the suffix keeps a symmetrized run from overwriting its plain twin
+    sym = ('_' + a.sector if sector else '') + ('_sym' if a.symmetrize_every else '')
+    path = os.path.join(a.out_dir,
+                        f"L{a.L}_D{a.D}_beta{a.beta:g}{tag}{sym}.h5")
     store_blocks = set(range(0, a.blocks, a.store_Q_every)) | {a.blocks - 1}
     benettin(psi, H_sym, a.dt, a.blocks, k, tau=a.tau, method=method,
              max_bond_dim=a.D, transient_steps=a.transient,
+             symmetrize_every=a.symmetrize_every, sector=sector,
+             project_every=a.project_every,
              store_path=path, store_Q_blocks=store_blocks, seed=a.seed)
     print(f"written {path}")
 

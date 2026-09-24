@@ -33,6 +33,12 @@ SCANS = {
         ('D = 8',  f'{RUNS}/L8_D8_beta0.1_k2n_ns.h5'),
         ('D = 12', f'{RUNS}/L8_D12_beta0.1_k2n.h5'),
     ]),
+    'swap_sym_D12': ('L = 8, D = 12: with and without the swap-even '
+                     'projection through the transient', [
+        ('D = 12, plain',        f'{RUNS}/L8_D12_beta0.1_k2n.h5'),
+        ('D = 12, symmetrized',  f'{RUNS}/L8_D12_beta0.1_k2n_sym.h5'),
+        ('D = 4 reference',      f'{RUNS}/L8_D4_beta0.1_k2n.h5'),
+    ]),
     'dt_route': ('L = 8, D = 4: time step and route', [
         ('Route B, dt = 0.05',  f'{RUNS}/L8_D4_beta1.h5'),
         ('Route A, dt = 0.025', f'{RUNS}/L8_D4_beta1_dt025.h5'),

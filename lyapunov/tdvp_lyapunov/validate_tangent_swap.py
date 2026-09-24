@@ -1,5 +1,5 @@
 """
-Validation rung 4: the physical/ancilla swap symmetry of the tangent space.
+Validation rung 6: the physical/ancilla swap symmetry of the tangent space.
 
 The thermofield double is built from rho^(1/2), a symmetric matrix, and in
 the vectorization psi <-> M the on-site swap |a b> -> |b a> is transposition,
@@ -63,9 +63,9 @@ swap-odd amplitude of the state, a_odd = |(1 - S)psi / 2|. Expect
      sector carries positive exponents, so whatever asymmetry exists grows
      exponentially: measured +0.649 at L=8, D=8, beta=0.1, against
      lambda_max = 0.615 for the same parameters. The symmetry therefore
-     has a lifetime of ~1/lambda and is gone by the end of a production
-     run -- any use of the sector split has to enforce it (re-symmetrize
-     psi and project the vectors each block) rather than assume it.
+     has a lifetime of ~1/lambda and would be gone by the end of a
+     production run, which is why runs enforce it rather than assume it
+     (--symmetrize-every; see SWAP_SYMMETRY.md).
 
 So there is a window: long enough that the bond dimension has filled,
 short enough that the drift has not taken over. t ~ 1-2 at these sizes.
@@ -87,7 +87,6 @@ import scipy.linalg as la
 sys.path.insert(0, os.getcwd())
 
 import qtensor.operators as ops
-import qtensor.states as states
 import qtensor.thermofield as tf
 
 from lyapunov.tdvp_lyapunov.frame import (
@@ -95,33 +94,10 @@ from lyapunov.tdvp_lyapunov.frame import (
     realify, complexify,
 )
 from lyapunov.tdvp_lyapunov.stepper import tdvp_step, lanczos_method
+from lyapunov.tdvp_lyapunov.symmetry import (
+    swap, odd_amplitude, swap_matrix, leaks as swap_leaks,
+)
 from lyapunov.relaxation.run_relaxation_scan import build_uniform_thermofield
-
-
-# The doubled physical index is i = 2 * a_phys + b_anc (analysis._copy_kron
-# builds one-copy operators as kron(A, I) / kron(I, A), and the infinite-T
-# seed is [1, 0, 0, 1] = |00> + |11>). Swapping the copies is therefore the
-# permutation 2a + b -> 2b + a, an involution, so the swap matrix is
-# symmetric and applying it to a tensor is a reindex of the physical leg.
-SWAP_PERM = [0, 2, 1, 3]
-
-
-def swap(phi):
-    """S|phi>: exchange the two copies on every site. Takes and returns
-    {site: tensor}; an mps is accepted and unwrapped."""
-    tensors = phi.tensors if hasattr(phi, 'tensors') else phi
-    return {site: T[SWAP_PERM, :, :].copy() for site, T in tensors.items()}
-
-
-def odd_amplitude(psi):
-    """
-    |(1 - S) psi / 2|: the swap-odd amplitude of the state, the quantity
-    everything else inherits. Linear in the asymmetry, unlike <psi|S|psi>,
-    which is 1 - 2 a_odd^2 and so hides it.
-    """
-    norm = abs(states.overlap(psi, psi))
-    ov = states.overlap(psi, states.mps(swap(psi))) / norm
-    return float(np.sqrt(max(0.0, (1.0 - ov.real) / 2.0)))
 
 
 def swap_coords(frame, y):
@@ -133,25 +109,6 @@ def swap_coords(frame, y):
     """
     phi = tangent_mps(frame, complexify(y), include_point=False)
     return realify(project_to_frame(swap(phi), frame))
-
-
-def swap_matrix(frame):
-    """
-    The (2n, 2n) real matrix Sigma of dS in the frame's coordinates.
-    Column j is dS applied to the j-th real basis vector. S is
-    complex-linear, so the columns for X and iX come from one projection:
-    n projections in total, each O(N d D^3), exactly as frame_change.
-    """
-    n = frame.n
-    Sig = np.zeros((2 * n, 2 * n))
-    for j in range(n):
-        X = np.zeros(n, dtype=complex)
-        X[j] = 1.0
-        c = project_to_frame(swap(tangent_mps(frame, X, include_point=False)),
-                             frame)
-        Sig[:, j] = realify(c)
-        Sig[:, n + j] = realify(1j * c)
-    return Sig
 
 
 def complex_structure(n):
@@ -236,7 +193,7 @@ def main(L=6, D=4, beta=0.1, imag_steps=40, t_transient=1.0, dt=0.05, ncols=6,
     print(f"    eigenvalues: max ||lambda| - 1| = {np.abs(np.abs(ev) - 1).max():.2e}; "
           f"sectors {n_plus} even / {2 * n - n_plus} odd (trace {Sig.trace():+.6f})")
 
-    leaks = np.sqrt(np.maximum(0.0, 1.0 - np.sum(Sig ** 2, axis=0)))
+    leaks = swap_leaks(Sig)
     print(f"    leak = sqrt(1 - |Sigma e_j|^2): max {leaks.max():.2e}, "
           f"median {np.median(leaks):.2e}")
     print(f"      the linear measure of the breaking, and the one to quote: "

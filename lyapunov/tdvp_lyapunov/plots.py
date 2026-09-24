@@ -93,8 +93,12 @@ def plot_convergence(log_diag, dt, tau, which=(0, 1, -2, -1), t=None, ax=None):
     return ax.figure
 
 
-def plot_pairing(exponents, ax=None):
-    """lambda_i + lambda_{2n+1-i}: zero for a Hamiltonian flow (full k=2n only)."""
+def plot_pairing(exponents, ax=None, within=None):
+    """
+    lambda_i + lambda_{2n+1-i}: zero for a Hamiltonian flow. Needs a complete
+    symplectic subspace -- the full k = 2n spectrum, or one swap sector
+    carried in full, which `within` names.
+    """
     r = pairing_residual(exponents)
     if ax is None:
         _, ax = plt.subplots(figsize=(5, 3))
@@ -102,7 +106,9 @@ def plot_pairing(exponents, ax=None):
     ax.axhline(0, color=MUTED, lw=0.8)
     ax.set_xlabel('i')
     ax.set_ylabel(r'$\lambda_i + \lambda_{2n+1-i}$')
-    ax.set_title('symplectic pairing', loc='left')
+    ax.set_title('symplectic pairing'
+                 + (f' within the {within} sector' if within else ''),
+                 loc='left')
     ax.figure.tight_layout()
     return ax.figure
 
@@ -151,6 +157,10 @@ def load_run(path):
     """Exponent data from an h5 run, rebuilding from R if the run was cut short."""
     with h5py.File(path, 'r') as f:
         out = {key: f.attrs[key] for key in ['dt', 'tau', 'n', 'k', 'transient_steps']}
+        # restricted-run bookkeeping; absent from files written before 2026-09-23
+        for key in ('sector', 'sector_dim', 'symmetrize_every', 'project_every'):
+            if key in f.attrs:
+                out[key] = f.attrs[key]
         R = f['R']
         if 'blocks_done' in f.attrs:
             done = int(f.attrs['blocks_done'])
@@ -187,8 +197,14 @@ def plot_run(path, modes=(0, -1), which='phys', show=False, discard=0, clv=False
     fig.savefig(os.path.join(FIGS, f'{name}_spectrum.png'), dpi=150)
     fig = plot_convergence(run['log_diag'], dt, tau, t=run['t'])
     fig.savefig(os.path.join(FIGS, f'{name}_convergence.png'), dpi=150)
-    if k == 2 * n:
-        fig = plot_pairing(lam)
+    # the pairing check applies to a complete symplectic subspace: the whole
+    # tangent space, or one swap sector carried in full (the sectors are
+    # J-invariant, hence symplectic in their own right)
+    sector = int(run.get('sector', 0))
+    whole_sector = sector and k == int(run.get('sector_dim', k))
+    if k == 2 * n or whole_sector:
+        fig = plot_pairing(lam, within=('even' if sector > 0 else 'odd')
+                           if whole_sector else None)
         fig.savefig(os.path.join(FIGS, f'{name}_pairing.png'), dpi=150)
 
     if clv:

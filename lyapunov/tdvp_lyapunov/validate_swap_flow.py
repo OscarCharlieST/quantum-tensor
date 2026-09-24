@@ -1,11 +1,11 @@
 """
-Validation rung 5: does the swap sector structure survive a Lyapunov run?
+Validation rung 7: does the swap sector structure survive a Lyapunov run?
 
-Rung 4 (`validate_tangent_swap.py`) established the involution at a point:
+Rung 6 (`validate_tangent_swap.py`) established the involution at a point:
 Sigma is exact, the tangent space splits 330/276 at L=8 D=4, and the split
 is preserved by the exact flow. This script asks the three questions that
-decide whether the split can be *used* -- see SWAP_SYMMETRY.md, staging
-items 2 and 3.
+decided whether the split could be *used* -- it can, and is: see
+SWAP_SYMMETRY.md.
 
     inject   Where does the asymmetry come from? a_odd = |(1-S)psi/2| along
              the imaginary-time build and the real-time transient. The build
@@ -15,6 +15,9 @@ items 2 and 3.
              is arbitrary and S maps the representation somewhere else. How
              long the state lingers there grows steeply with D, because the
              beta = 0.1 thermofield double is close to rank 1.
+             --symmetrize-every n runs the same transient a second time
+             with symmetry.evolve holding it in the even sector, and
+             compares: the fix at D = 12, the regression at D = 4.
 
     run      Post-hoc on a stored run: a_odd along the stored frames, and
              the sector content of the stored Q (and optionally the CLVs).
@@ -43,6 +46,7 @@ items 2 and 3.
 
 Run from the repo root:
     python lyapunov/tdvp_lyapunov/validate_swap_flow.py inject --D 12
+    python lyapunov/tdvp_lyapunov/validate_swap_flow.py inject --D 12 --symmetrize-every 1
     python lyapunov/tdvp_lyapunov/validate_swap_flow.py run --path <run.h5>
     python lyapunov/tdvp_lyapunov/validate_swap_flow.py seeded --blocks 200
 """
@@ -59,6 +63,7 @@ import scipy.linalg as la
 sys.path.insert(0, os.getcwd())
 
 import qtensor.operators as ops
+import qtensor.states as states
 import qtensor.thermofield as tf
 
 from lyapunov.tdvp_lyapunov.frame import Frame
@@ -67,27 +72,13 @@ from lyapunov.tdvp_lyapunov.tangent_generator import (
     generator, parallel_transport, propagate,
 )
 from lyapunov.tdvp_lyapunov.benettin import positive_qr, load_frame, ginelli_backward
-from lyapunov.tdvp_lyapunov.validate_tangent_swap import swap_matrix, odd_amplitude
+from lyapunov.tdvp_lyapunov.symmetry import (
+    swap_matrix, odd_amplitude, sector_basis, odd_weight, evolve,
+)
 from lyapunov.relaxation.run_relaxation_scan import build_uniform_thermofield
 
 
 # ------------------------------------------------------------------ helpers
-
-def sector_basis(Sig):
-    """Orthonormal bases of the +1 and -1 eigenspaces of Sigma."""
-    ev, U = la.eigh(Sig)
-    return U[:, ev > 0], U[:, ev < 0]
-
-
-def odd_weight(Sig, Q):
-    """
-    Per column, the fraction of the norm in the odd sector,
-    |P_- q|^2 / |q|^2 with P_- = (1 - Sigma)/2. Zero for an even vector,
-    one for an odd one, ~1/2 for a generic one.
-    """
-    return np.clip(0.5 * (1 - np.einsum('ij,ij->j', Q, Sig @ Q)
-                          / np.einsum('ij,ij->j', Q, Q)), 0.0, 1.0)
-
 
 def decomposability(Sig, Q):
     """
@@ -107,26 +98,72 @@ def s_min_of(frame):
 
 # ------------------------------------------------------------------- inject
 
-def inject(L, D, beta, imag_steps, dt, steps):
-    """a_odd and s_min along the build and the transient."""
+def inject(L, D, beta, imag_steps, dt, steps, symmetrize_every=0):
+    """
+    a_odd and s_min along the build and the transient. With
+    symmetrize_every > 0 the same trajectory is run twice, plain and with
+    `symmetry.evolve` projecting onto the even sector, and the two are
+    compared -- which is both the demonstration at D = 12 (a_odd held at
+    1e-8 instead of reaching 0.68) and the regression at D = 4 (where
+    nothing is injected, so the two trajectories must agree).
+    """
     H = tf.thermofield_hamiltonian(ops.tilted_ising(N=L), asym=False)
     method = lanczos_method()
     np.random.seed(0)
     t0 = clock.time()
-    psi, _ = build_uniform_thermofield(L, D, beta, imag_steps)
+    psi0, _ = build_uniform_thermofield(L, D, beta, imag_steps)
     print(f"L={L} D={D} beta={beta}, {imag_steps} imaginary steps "
-          f"({clock.time() - t0:.0f}s), then dt={dt:g} to t={steps * dt:g}")
-    print(f"\n{'t':>6}  {'s_min':>9}  {'a_odd':>9}")
-    marks = {2, 5, 10, 20, 40, 80, 160, steps}
-    print(f"{0.0:>6.2f}  {s_min_of(Frame(psi, D)):>9.1e}  {odd_amplitude(psi):>9.2e}")
-    for j in range(1, steps + 1):
-        psi = tdvp_step(psi, H, dt, method)
-        if j in marks:
-            print(f"{j * dt:>6.2f}  {s_min_of(Frame(psi, D)):>9.1e}  "
-                  f"{odd_amplitude(psi):>9.2e}", flush=True)
-    print("\nThe build is symmetric to the integration error. Everything after "
-          "that is\ninjected while s_min << 1 and then amplified at the "
-          "Lyapunov rate.")
+          f"({clock.time() - t0:.0f}s), then dt={dt:g} to t={steps * dt:g}"
+          + (f", projecting every {symmetrize_every} step(s)"
+             if symmetrize_every else ""))
+
+    marks = sorted({2, 5, 10, 20, 40, 80, 160, steps} & set(range(1, steps + 1)))
+    runs = {}
+    for label, every in [('plain', 0)] + ([('enforced', symmetrize_every)]
+                                          if symmetrize_every else []):
+        psi, rows, cut, done = psi0, [], 0.0, 0
+        for mark in marks:
+            psi, log = evolve(psi, H, dt, mark - done, method, D, every)
+            done = mark
+            if len(log):
+                cut = max(cut, np.abs(log[:, 2]).max())
+            rows.append((mark * dt, s_min_of(Frame(psi, D)), odd_amplitude(psi),
+                         float(np.real(ops.expect(psi, H)))))
+        runs[label] = (psi, rows, cut)
+        print(f"  {label} done ({clock.time() - t0:.0f}s)"
+              + (f", largest compression cut {cut:.2e}" if every else ""),
+              flush=True)
+
+    head = f"\n{'t':>6} | {'s_min':>9} {'a_odd':>9} {'E':>11}"
+    print(head + (f" | {'s_min':>9} {'a_odd':>9} {'E':>11} | {'dE':>9}"
+                  if 'enforced' in runs else ""))
+    print(f"{0.0:>6.2f} | {s_min_of(Frame(psi0, D)):>9.1e} "
+          f"{odd_amplitude(psi0):>9.2e} {np.real(ops.expect(psi0, H)):>11.6f}")
+    for i, (t, s, a, e) in enumerate(runs['plain'][1]):
+        row = f"{t:>6.2f} | {s:>9.1e} {a:>9.2e} {e:>11.6f}"
+        if 'enforced' in runs:
+            _, s2, a2, e2 = runs['enforced'][1][i]
+            row += f" | {s2:>9.1e} {a2:>9.2e} {e2:>11.6f} | {e2 - e:>+9.2e}"
+        print(row)
+
+    if 'enforced' in runs:
+        ov = abs(states.overlap(runs['plain'][0], runs['enforced'][0]))
+        a_odd = runs['plain'][1][-1][2]
+        print(f"\n1 - |<plain|enforced>| at t = {steps * dt:g}: {1 - ov:.2e}, "
+              f"against a_odd = {a_odd:.1e} plain")
+        if a_odd < 1e-5:
+            print("Nothing was injected here, so this is a regression: the "
+                  "projection had\nnothing to remove and must not have moved "
+                  "the trajectory.")
+        else:
+            print("The two have separated, as they must once the projection "
+                  "has something\nto remove and the flow is chaotic. The "
+                  "enforced one is the thermofield\ntrajectory; the plain one "
+                  "left the symmetric sector.")
+    else:
+        print("\nThe build is symmetric to the integration error. Everything "
+              "after that is\ninjected while s_min << 1 and then amplified at "
+              "the Lyapunov rate.")
 
 
 # ------------------------------------------------------------------ posthoc
@@ -275,6 +312,10 @@ def parse():
     a = sub.add_parser('inject', parents=[common],
                        help='where the asymmetry enters')
     a.add_argument('--steps', type=int, default=160)
+    a.add_argument('--symmetrize-every', type=int, default=0,
+                   help='also run the transient with the even-sector '
+                        'projection applied every this many steps, and '
+                        'compare (0 = plain only)')
 
     b = sub.add_parser('run', help='post-hoc sector content of a stored run')
     b.add_argument('--path', required=True)
@@ -297,7 +338,8 @@ def parse():
 if __name__ == '__main__':
     a = parse()
     if a.mode == 'inject':
-        inject(a.L, a.D, a.beta, a.imag_steps, a.dt, a.steps)
+        inject(a.L, a.D, a.beta, a.imag_steps, a.dt, a.steps,
+               a.symmetrize_every)
     elif a.mode == 'run':
         posthoc(a.path, a.every, a.sigma_blocks, a.clv_block)
     else:

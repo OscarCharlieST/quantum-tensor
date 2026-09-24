@@ -17,6 +17,7 @@ lyapunov/
     run_relaxation_scan.py      the L scan driver
   tdvp_lyapunov/                ACTIVE: default beta = 0.1 (see "Defaults")
     README.md                   design, Route B derivation, validation, cost, results, next
+    SWAP_SYMMETRY.md            the physical/ancilla swap: sectors, enforcement, what it bought
     frame.py                    tangent frame at a point; project_to_frame / retract / frame_change
     stepper.py                  one TDVP step as a map: the trajectory
     tangent_generator.py        exact generator, transport, exponential action
@@ -24,12 +25,14 @@ lyapunov/
     analysis.py                 energy-density profiles of modes, cosine transform
     hlm.py                      local-temperature templates, spectral enrichment; run_hlm.py driver
     plots.py                    per-run figures;  compare_runs.py  cross-run overlays
-    run_lyapunov.py             spectrum driver (--L --D --beta --k --blocks --time-only)
+    symmetry.py                 swap involution: state projection, tangent sector basis
+    run_lyapunov.py             spectrum driver (--L --D --beta --k --sector --blocks)
     run_template.py             k=1: seed one local-temperature template and watch it
     mode_dispersion.py          per-vector wavevector content vs exponent
     long_wavelength_modes.py    free-phase longest-wavelength candidate modes
     compare_beta.py             temperature comparison across full-spectrum runs
-    validate_frame.py (rung 1), validate_benettin.py (rungs 2-3)
+    validate_frame.py (1), validate_benettin.py (2-3), validate_tangent_swap.py (4),
+    validate_swap_flow.py (5)
     runs/                       logs and queue scripts only; all h5 in C:/Users/charl/lyapunov_runs
     figures/
 ```
@@ -325,31 +328,43 @@ before you commit. Big h5 files go outside OneDrive.
 | 7 | energy profiles, cosine transforms; figures | `analysis.*`, `plots.py`, `compare_runs.py` |
 | 8 | template modes, spectral enrichment, candidate HLMs | `hlm.*`, `run_hlm.py` |
 
-### L and D scan (2026-09-21, β = 0.1, k = 2n)
+### L and D scan (β = 0.1, 250 blocks at dt = 0.05, transient 160, imag 240)
 
-Five runs under `H_sym`, `SEED_NOISE = 0`, 250 blocks at dt = 0.05, 240
-imaginary-time steps, transient 160. `_ns` = no seeding noise, a tag only,
-to avoid overwriting the 2026-09-17 D = 8 file. Figures
-`<run>_{spectrum,convergence,pairing}.png`,
-`compare_{L,D}_scan_beta0.1_k2n.png`.
+Quote the **even-sector** runs (2026-09-24). The swap symmetry of the state
+was uncontrolled in the 2026-09-21 `k = 2n` set and differs wildly across
+it — `a_odd` = 9e-4 at D = 4, 0.70 at D = 8, 0.68 *before the first block*
+at D = 12 — so its D dependence is not a controlled comparison; the even
+runs differ only in D. See
+[`tdvp_lyapunov/SWAP_SYMMETRY.md`](tdvp_lyapunov/SWAP_SYMMETRY.md). Figures
+`<run>_{spectrum,convergence,pairing}.png`, `compare_*.png`.
 
-| run | n | λ_max | Σλ | max pairing | drift (last 25%) | Σλ⁺ |
-|---|---|---|---|---|---|---|
-| L8_D4 | 303 | +0.575 | −3.6e-3 | 1.5e-2 | 0.029 | 62.6 |
-| L12_D4 | 495 | +0.710 | −2.3e-2 | 2.0e-2 | 0.048 | 113.6 |
-| L16_D4 | 687 | +0.638 | −8.7e-2 | 1.5e-2 | 0.026 | 157.6 |
-| L8_D8_ns | 959 | +0.615 | −1.1e-2 | 1.5e-2 | 0.029 | 218.9 |
-| L8_D12 | 1967 | +0.522 | −3.1e-2 | 7.1e-3 | 0.014 | 393.6 |
+| run | k | λ_max | Σλ | max pairing | spread¹ | Σλ⁺ | Σλ⁺/k |
+|---|---|---|---|---|---|---|---|
+| L8_D4 even | 330 | +0.535 | −2.4e-3 | 4.4e-2 | 0.013 | 32.1 | 0.097 |
+| L8_D8 even | 1102 | +0.539 | −7.6e-3 | 1.1e-2 | 0.014 | 111.8 | 0.101 |
+| L8_D12 even | 2098 | +0.527 | −1.8e-2 | 9.5e-3 | 0.008 | 194.7 | 0.093 |
+| L8_D4 | 606 | +0.575 | −3.6e-3 | 1.5e-2 | 0.014 | 62.6 | 0.103 |
+| L8_D8_ns | 1918 | +0.615 | −1.1e-2 | 1.4e-2 | 0.029 | 218.9 | 0.114 |
+| L8_D12 | 3934 | +0.522 | −3.1e-2 | 7.1e-3 | 0.005 | 393.6 | 0.100 |
+| L12_D4 | 990 | +0.710 | −2.3e-2 | 2.0e-2 | 0.030 | 113.6 | 0.115 |
+| L16_D4 | 1374 | +0.638 | −8.7e-2 | 1.5e-2 | 0.032 | 157.6 | 0.115 |
 
-**The D scan collapses.** At L = 8, D = 4, 8 and 12 lie on one curve of
-λ_i against i/2n across the whole spectrum, with D = 8 slightly *above*
-the other two — the ordering of a convergence wobble, not of a D trend.
-This supersedes the β = 1 reading of a strong, non-monotone D dependence.
-Three things changed at once (β, the seeding noise, and a D = 12 run now
-as long as the others), so it does not say which carried that reading.
-his data supercedes intial rscans with k=n and beta=1, which produced ficticious signals.
-T
- Temperature scan (2026-09-17)
+¹ spread of the running λ_max over the last quarter: the convergence noise
+floor of that run.
+
+**λ_max does not depend on D.** In the even sector it is 0.535 / 0.539 /
+0.527 across a threefold range of D — a spread of 0.012, no larger than any
+one run's own noise floor. The unrestricted numbers spread 0.09 and
+non-monotonically, and that scatter was the uncontrolled symmetry breaking,
+not the flow. This supersedes both "the D scan collapses" and the earlier
+β = 1 reading of a strong non-monotone D dependence; both of those, and the
+initial k = n, β = 1 scans, are superseded data.
+
+The L scan has not been redone in the even sector. At D = 4 the 2026-09-21
+state stayed symmetric to 9e-4, so those three points are the trustworthy
+part of the old set.
+
+### Temperature scan (2026-09-17)
 
 L = 8, D = 8, full spectrum, beta = 1 / 0.1 / 0.01 (`compare_beta.py`).
 

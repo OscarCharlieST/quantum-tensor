@@ -1,13 +1,17 @@
 # Lyapunov exponents of the TDVP flow
 
 Status: **first production scan done (2026-09-16); hydrodynamic-mode
-signal found (2026-09-17), corrected by the `k = 2n` run the same day.**
-The tangent map is the exact generator ("Route B"), cross-validated against
-a since-removed finite-difference implementation. Six runs cover L = 8, 12,
-16 at D = 4 and D = 4, 8, 12 at L = 8, with covariant Lyapunov vectors.
+signal found (2026-09-17), corrected by the `k = 2n` run the same day;
+swap-sector runs since 2026-09-24.** The tangent map is the exact generator
+("Route B"), cross-validated against a since-removed finite-difference
+implementation. Runs cover L = 8, 12, 16 at D = 4 and D = 4, 8, 12 at
+L = 8, the last three redone in the swap-even sector, with covariant
+Lyapunov vectors.
 
 Headline: the half spectrum is extensive per tangent dimension and
-route/dt-independent; the long-wavelength local-temperature template sits
+route/dt-independent, and λ_max does not depend on D once the
+physical/ancilla swap symmetry is held ([`SWAP_SYMMETRY.md`](SWAP_SYMMETRY.md));
+the long-wavelength local-temperature template sits
 on the **contracting** directions (enrichment 1.7x) and avoids the
 expanding ones (0.44x), while its symplectic partner, the local time-shift
 template, does the reverse. The effect dies monotonically with wavevector
@@ -196,6 +200,13 @@ accumulation starts; and watch `K`, which blows up first.
    zeros, energy conservation, convergence in `dt`, `τ` and transient.
    **D-dependence is physics, not convergence error**: these are exponents
    of the manifold, and the quantum dynamics itself has none.
+6. **The swap involution at a point** — `Σ² = 1`, `Σ` orthogonal and
+   symmetric, `[Σ, J] = 0`, and `X ± ΣX` are `±1` eigenvectors of `S`
+   applied in Hilbert space. `validate_tangent_swap.py`.
+7. **The sectors along a run** — where the asymmetry enters, whether a
+   sector-seeded set stays in its sector, and whether the union of the two
+   restricted spectra reproduces the unrestricted one.
+   `validate_swap_flow.py`.
 
 ### 9. Towards hydrodynamic Lyapunov modes
 
@@ -315,6 +326,13 @@ All in this folder; run from the repo root.
 - `stepper.py` — `tdvp_step(psi, H, dt, method)` (one right+left sweep pair,
   no progress bar, returns a new mps) and the two integrator choices,
   `exact_method` / `lanczos_method(epsilon=1e-8)`. This is the trajectory.
+- `symmetry.py` — the physical/ancilla swap: `swap`, `odd_amplitude`,
+  `enforce_swap_symmetry(psi, D)` (the even-sector projection
+  `(ψ + Sψ)/‖·‖`, recompressed) and `evolve(..., symmetrize_every=n)`, the
+  transient loop that applies it; on the tangent side `swap_matrix(frame)`
+  → `Σ`, `leaks`, `sector_basis`, `odd_weight`. See
+  [`SWAP_SYMMETRY.md`](SWAP_SYMMETRY.md) — enforcement belongs in the
+  transient, which is where all the asymmetry is injected.
 - `tangent_generator.py` — Route B: `apply_mpo`, `normal_residual` (`w_N`),
   `assemble_K`, `assemble_H_tan`, `realify_generator`, `generator(frame, H)`,
   `parallel_transport` (polar factor by two Newton–Schulz iterations),
@@ -338,7 +356,9 @@ All in this folder; run from the repo root.
   window: `figures/compare_{L_scan,D_scan,dt_route}.png`.
 - `run_lyapunov.py` — spectrum driver: `--L --D --beta --k --blocks
   --transient --out-dir`; `--time-only` measures a step and prints a cost
-  estimate. `--beta` defaults to 0.1.
+  estimate. `--beta` defaults to 0.1. `--symmetrize-every n` holds the
+  transient in the swap-even sector (`_sym` run name, setting in the attrs,
+  `a_odd` logged per block) — see [`SWAP_SYMMETRY.md`](SWAP_SYMMETRY.md).
 - `run_template.py` — the cheap alternative to a spectrum: seed the tangent
   flow with a *single* local-temperature template `a_q` (`--kmode`) and
   watch it, `k = 1`. The exponential action then costs nothing, so the
@@ -354,12 +374,10 @@ All in this folder; run from the repo root.
   timestamped log `runs/queue2.log`.
 - `validate_frame.py` (rung 1: frame primitives, retraction order, gauge
   invariance of a step), `validate_benettin.py [2|3]` (rungs 2-3, on the
-  Route B map), `validate_tangent_swap.py` (rung 4: the physical/ancilla
-  swap involution on the tangent space), `validate_swap_flow.py`
-  (rung 5: whether the sectors survive a run — and they do not at D ≥ 8,
-  where the state itself leaves the symmetric sector during the transient).
-  See [`SWAP_SYMMETRY.md`](SWAP_SYMMETRY.md) for both, and for what breaks
-  them.
+  Route B map), `validate_tangent_swap.py` (rung 6: the swap involution on
+  the tangent space), `validate_swap_flow.py` (rung 7: where the asymmetry
+  enters, and whether the sectors survive a run). See
+  [`SWAP_SYMMETRY.md`](SWAP_SYMMETRY.md) for both.
 
 ### Lanczos fix in `qtensor/simulation/updatemethod.py`
 
@@ -429,44 +447,53 @@ revisited, note CuPy 14 requires numpy >= 2, which this repo cannot take
 (`np.product` in `updatemethod.exact`); pin `cupy-cuda12x==13.6.0` and
 register its DLL directories before `import cupy`.
 
-## Results: L and D scan (2026-09-21, β = 0.1, k = 2n)
+## Results: L and D scan (β = 0.1)
 
-Five runs under `H_sym`, all with `SEED_NOISE = 0`: 250 blocks at
-dt = 0.05, a 240-step imaginary-time build, tangent vectors switched on at
-t = 8 (160 transient steps), both halves of the spectrum. h5 files in
-`C:\Users\charl\lyapunov_runs`; per-run figures
-`figures/<run>_{spectrum,convergence,pairing}.png`, cross-run
-`figures/compare_{L,D}_scan_beta0.1_k2n.png` (`compare_runs.py`, window
-t > 11).
+All runs under `H_sym` with `SEED_NOISE = 0`: 250 blocks at dt = 0.05, a
+240-step imaginary-time build, tangent vectors switched on at t = 8 (160
+transient steps). h5 in `C:\Users\charl\lyapunov_runs`; figures
+`figures/<run>_{spectrum,convergence,pairing}.png` and `compare_*.png`.
 
-| run | n | λ_max | Σλ | max pairing | drift (last 25%) | Σλ⁺ |
-|---|---|---|---|---|---|---|
-| L8_D4 | 303 | +0.575 | −3.6e-3 | 1.5e-2 | 0.029 | 62.6 |
-| L12_D4 | 495 | +0.710 | −2.3e-2 | 2.0e-2 | 0.048 | 113.6 |
-| L16_D4 | 687 | +0.638 | −8.7e-2 | 1.5e-2 | 0.026 | 157.6 |
-| L8_D8_ns | 959 | +0.615 | −1.1e-2 | 1.5e-2 | 0.029 | 218.9 |
-| L8_D12 | 1967 | +0.522 | −3.1e-2 | 7.1e-3 | 0.014 | 393.6 |
+The **even-sector** runs (2026-09-24) are the ones to quote. In the
+2026-09-21 `k = 2n` set the swap symmetry of the state was uncontrolled and
+differs across the set — `a_odd` = 9e-4 at D = 4, 0.70 at D = 8, 0.68
+*before the first block* at D = 12 — so its D dependence compares runs that
+differ in more than D. See [`SWAP_SYMMETRY.md`](SWAP_SYMMETRY.md).
 
-Max pairing is `max |λ_i + λ_{2n+1−i}|`, drift the largest change in any
-running exponent over the last quarter of the run, Σλ⁺ the sum of the
-positive exponents.
+| run | k | λ_max | Σλ | max pairing | spread¹ | Σλ⁺ | Σλ⁺/k |
+|---|---|---|---|---|---|---|---|
+| L8_D4 even | 330 | +0.535 | −2.4e-3 | 4.4e-2 | 0.013 | 32.1 | 0.097 |
+| L8_D8 even | 1102 | +0.539 | −7.6e-3 | 1.1e-2 | 0.014 | 111.8 | 0.101 |
+| L8_D12 even | 2098 | +0.527 | −1.8e-2 | 9.5e-3 | 0.008 | 194.7 | 0.093 |
+| L8_D4 | 606 | +0.575 | −3.6e-3 | 1.5e-2 | 0.014 | 62.6 | 0.103 |
+| L8_D8_ns | 1918 | +0.615 | −1.1e-2 | 1.4e-2 | 0.029 | 218.9 | 0.114 |
+| L8_D12 | 3934 | +0.522 | −3.1e-2 | 7.1e-3 | 0.005 | 393.6 | 0.100 |
+| L12_D4 | 990 | +0.710 | −2.3e-2 | 2.0e-2 | 0.030 | 113.6 | 0.115 |
+| L16_D4 | 1374 | +0.638 | −8.7e-2 | 1.5e-2 | 0.032 | 157.6 | 0.115 |
 
-`_ns` = no seeding noise. All five runs are noiseless; the tag exists only
-to stop this D = 8 rerun overwriting the noise-seeded 2026-09-17 file of
-the same name, which gives λ_max = 0.529 against 0.615 here. That file also
-used 60 imaginary-time steps against 240, so the two builds differ in more
-than the noise.
+Max pairing is `max |λ_i + λ_{2n+1−i}|`, within the sector where one is
+carried; ¹ spread is the range of the running λ_max over the last quarter,
+i.e. that run's own convergence noise; Σλ⁺ the sum of the positive
+exponents.
+
+`_ns` = no seeding noise. All of these are noiseless; the tag exists only
+to stop the D = 8 rerun overwriting the noise-seeded 2026-09-17 file of the
+same name, which gives λ_max = 0.529 against 0.615 here. That file also used
+60 imaginary-time steps against 240, so the two builds differ in more than
+the noise.
 
 ### Finding
 
-**The D scan collapses.** At L = 8, D = 4, 8 and 12 lie on one curve of
-`λ_i` against `i/2n` across the whole spectrum
-(`compare_D_scan_beta0.1_k2n.png`), with D = 8 slightly *above* the other
-two rather than between them — the ordering of a convergence wobble, not of
-a D trend. This supersedes the earlier β = 1 reading of a strong,
-non-monotone D dependence. Three things changed at once (β = 1 → 0.1, the
-seeding noise, and a D = 12 run now as long as the others), so it does not
-say which of them carried that reading.
+**λ_max does not depend on D.** In the even sector it is 0.535 / 0.539 /
+0.527 at D = 4 / 8 / 12 — a spread of 0.012, inside every one of those runs'
+own noise floors, and the sorted spectra lie on one curve of `λ_i` against
+`i/2n`. The unrestricted numbers spread 0.09 and non-monotonically; that
+scatter was uncontrolled symmetry breaking, not a D trend. This supersedes
+both the earlier "D scan collapses" reading and the β = 1 reading of a
+strong non-monotone D dependence.
+
+The L scan has not been redone in the even sector. Its D = 4 points are the
+trustworthy part of the old set, since that state stayed symmetric to 9e-4.
 
 ## Hydrodynamic modes: the template analysis (2026-09-17, k = 2n)
 

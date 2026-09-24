@@ -1,16 +1,16 @@
 # Physical/ancilla swap symmetry of the tangent space
 
-Status: **symmetry confirmed and its decomposition validated (2026-09-22);
-not usable above D = 4 as the pipeline stands.**
-`validate_tangent_swap.py` builds the involution and checks it at a point;
-`validate_swap_flow.py` follows it along a run. The two findings that
-govern any use of it: the split is exact for the flow but **numerically
-injected into, at the rank-deficient start, in an amount that grows steeply
-with D** — the L8 D12 production run is already fully asymmetric before its
-first block — and a stored run **cannot be labelled after the fact**,
-because its vectors are nowhere near converged.
+Status: **in production (2026-09-24).** `symmetry.py` holds the machinery;
+`run_lyapunov.py --symmetrize-every 1 --sector even` is the production form,
+and the even-sector runs are the ones to quote — see
+[`../WORKFLOW.md`](../WORKFLOW.md) for the scan.
 
-See [`README.md`](README.md) for the pipeline this would plug into.
+What it bought is a *controlled* D scan. The 2026-09-21 `k = 2n` runs sat at
+wildly different symmetry breaking (`a_odd` = 9e-4 at D = 4, 0.70 at D = 8,
+0.68 before the first block at D = 12), and their scatter in λ_max was read
+as a D dependence. Holding the symmetry, λ_max is flat in D to 0.012, within
+each run's own convergence noise. It also costs less: 2.9 h and 6.3 GB at
+L8 D12 against 6.0 h and 19.2 GB.
 
 ## The symmetry
 
@@ -43,28 +43,24 @@ valid, and since `[S, J] = 0` each sector is symplectic in its own right —
 **the `±λ` pairing residual still works as the health check inside a
 restricted run.**
 
-## What it would buy
+## What it costs (measured, L8 D12, 250 blocks)
 
-Per block the cost is `k` generator applications (linear in `k`) plus a QR
-of a `(2n, k)` matrix, with `k²` stored per block.
+| | k | per block | wall | R storage |
+|---|---|---|---|---|
+| `k = 2n` | 3934 | 78 s | 6.0 h | 19.2 GB |
+| even sector | 2098 | 42 s, +102 s per projection | 2.9 h | 6.3 GB |
 
-| | k | QR | R storage (L8_D12) |
-|---|---|---|---|
-| today, `k = 2n` | 2n | 8n³ | 19.2 GB |
-| project each step, `k = n` | n | 2n³ | 4.8 GB |
-| explicit sector basis | n | n³ | 4.8 GB |
+The QR dominates the `k`-dependent cost — 43 s of that 78 s, measured — but
+the generator (16 s) and transport (6 s) are `k`-independent and floor the
+block at 22 s, so halving `k` does not halve the run. Σ itself costs 102 s
+at D = 12, hence `--project-every 10`. Taking `k` to half a sector (the
+non-negative half, 1049) would give ~2 h and 1.4 GB, at the price of the
+pairing residual as a live check — not worth it while the restricted
+machinery is this new.
 
-2x on the generator and 4–8x on the QR, so the 101-minute, 19 GB D = 12 run
-becomes roughly half an hour and 5 GB — which puts **D = 16, or L = 24,
-inside today's budget**. The sectors are not 50/50 (measured 330/276 at
-L = 8, D = 4 and 1038/880 at L = 8, D = 8), so keeping the even half alone
-is ~6.5x on the QR rather than 8x.
-
-Second payoff, independent of cost: every exponent and CLV gets a **sector
-label**, a real quantum number, sharper than the enrichment measure. It also
-predicts that near-degenerate cross-sector pairs at the top of the spectrum
-are mixed by QR — a candidate explanation for the ±15% noise in the top 5%
-that no amount of running has fixed.
+`run_lyapunov`'s own cost estimate is useless here: it times the probe at
+the *build* point, where s_min ~ 1e-14 makes the generator's `Λ^-1` term
+enormous and one exponential action takes 600 s against ~13 s in the run.
 
 ## Building the involution
 
@@ -88,7 +84,7 @@ gauge phases must telescope so the induced action on `psi` itself is `+1`
 the sector labels silently swap), and `W`, `Ũ` must come from the same
 canonicalization pass as `V_L`.
 
-## Validated (2026-09-22)
+## Validated
 
 `validate_tangent_swap.py` at L = 8, D = 4, β = 0.1, t = 1 (n = 303):
 
@@ -109,46 +105,40 @@ dropped twice. The linear measure is `leak = sqrt(1 - |Sigma e_j|^2)`, and
 it tracks the swap-odd amplitude of the state,
 `a_odd = |(1 - S)psi / 2|`. Expect `|1 - lambda| ~ leak²`.
 
-## What breaks it, and what that costs
+Sector dimensions at the start of each production run (t = 8, `a_odd` 1e-8,
+Σ an involution to 2e-14): **330/276** at D = 4, **1102/816** at D = 8,
+**2098/1836** at D = 12. Even always exceeds odd, as the one-site picture
+requires — the swap is transposition on a 2×2 matrix, 3 symmetric against 1
+antisymmetric — and the imbalance is `tr Σ = Σ_m tr W_m · tr Ũ_m`, which
+nothing forces to vanish. Read the split only at a clean point: an earlier
+1038/880 at D = 8 was taken at t = 1, where leak = 2e-3 means the
+eigenvalues are not ±1 and the count cannot be trusted.
 
-Two mechanisms, neither of them roundoff. Measured at L = 8, D = 8, β = 0.1
-(`t = transient * dt`; the script takes `--transient` as a **time** for this
-reason):
+## What breaks it
 
-| config | t | s_min | a_odd | leak | \|1−λ\| |
-|---|---|---|---|---|---|
-| D = 4 reference | 1.0 | 1.9e-01 | 1.1e-07 | 7.4e-07 | 1.4e-13 |
-| D = 8 baseline | 1.0 | 2.9e-02 | 7.7e-05 | 2.1e-03 | 2.1e-07 |
-| D = 8, imag_steps 40→240 | 1.0 | 2.9e-02 | 3.5e-05 | 3.2e-04 | 5.7e-08 |
-| D = 8, dt 0.05→0.01 | 0.2 | 4.0e-07 | 8.4e-07 | 2.3e-01 | 2.5e-02 |
-| D = 8, imag 240 at t = 0.2 | 0.2 | 2.8e-07 | 9.2e-07 | 2.9e-01 | 4.5e-02 |
-| D = 8, transient → t = 8 | 8.0 | 2.0e-01 | 7.4e-03 | 1.4e-02 | 9.0e-05 |
+Two mechanisms, neither of them roundoff, and one feeds the other.
 
 **1. Rank deficiency — the frame, not the state.** At β = 0.1 the exact
 thermofield double is close to rank 1, so the imaginary-time build *ends* on
 the rank-deficient boundary (s_min = 2.4e-11 at D = 8) and only real time
-walks the state off it (2.9e-2 by t = 1, 2.0e-1 by t = 8). Where a Schmidt
-value is numerically zero the point is a **singular point of the rank-D
-manifold**: `A_R` and `V_L` past the rank are an arbitrary isometry
-completion, the parameterized tangent space is a property of the
-representation rather than of the state, and `S` — which makes a different
-arbitrary choice — maps it elsewhere. Signature: `leak >> a_odd` (ratio
-~1e5, against 2–30 with a sound frame). This is why converging the build
-*harder* hurts while t is short: a better-converged TFD is closer to rank 1.
+walks the state off it. Where a Schmidt value is numerically zero the point
+is a **singular point of the rank-D manifold**: `A_R` and `V_L` past the
+rank are an arbitrary isometry completion, the parameterized tangent space
+is a property of the representation rather than of the state, and `S` —
+which makes a different arbitrary choice — maps it elsewhere. Signature:
+`leak >> a_odd`, ratio ~1e5 against 2–30 with a sound frame.
 
 **2. Chaotic amplification — the state, not the frame.** The exact flow
-commutes with `S`, but the odd sector carries positive exponents, so any
-asymmetry grows exponentially. Measured growth of `a_odd` over t = 1..8:
-**+0.649** at D = 8, β = 0.1 (+0.829 at D = 4, +1.065 at β = 1), against
-`λ_max = 0.615` for the same parameters. Signature: `leak ~ a_odd`.
+commutes with `S`, but the odd sector carries positive exponents, so
+whatever was injected grows at the Lyapunov rate: `a_odd` grows at +0.649 at
+D = 8, β = 0.1, against `λ_max` = 0.615. Signature: `leak ~ a_odd`.
 
-So there is a **window**: long enough that the bond dimension has filled,
-short enough that the drift has not taken over — t ≈ 1–2 at these sizes.
-Outside it the check fails for a reason, and the script now says which.
-There is no setting that makes the check clean at D = 8: `a_odd` is already
-7.7e-5 by the time the bonds have filled, so `leak ~ 2e-3` is the floor.
+Enforcement kills the first, and with nothing left to amplify the second
+has nothing to do. `validate_tangent_swap.py` still reports which of the two
+it is looking at, which is what the `--transient` *time* (not step count)
+is for: below t ≈ 1 the frame is singular, above t ≈ 2 the drift dominates.
 
-### Where the asymmetry actually enters (2026-09-22)
+### Where it enters
 
 `validate_swap_flow.py inject` traces `a_odd` through the build and the
 transient (L = 8, β = 0.1, 240 imaginary steps, dt = 0.05):
@@ -184,10 +174,10 @@ Along the stored runs of the 2026-09-21 scan (`validate_swap_flow.py run`,
 So the D = 4 runs stay symmetric to ~1e-3 over their whole length, D = 8
 loses it halfway, and **the D = 12 run was never on a thermofield
 trajectory at all** — it left the symmetric sector during its transient,
-before the first tangent vector was propagated. That is the same run whose
-λ_max came out low (0.522 against 0.615 at D = 8); it does not prove the
-D scan's collapse is an artefact, but it is a second symptom of the same
-rank-deficient start and should be weighed with it.
+before the first tangent vector was propagated. Rerunning it in the even
+sector settled what that cost: λ_max comes out at 0.527, statistically the
+same as the plain run's 0.522. The broken symmetry was corrupting the
+*comparison between* runs, not λ_max within one.
 
 ## What the Lyapunov vectors do
 
@@ -212,65 +202,66 @@ stays symmetric, so that what is measured is the vectors and not the point.
   factor of 2 (5.8e-7 at the start, 2.5e-4 at the end) and grows at the
   same rate. The tangent split is preserved exactly as well as the state's
   symmetry is, with no amplification of its own.
-- **Soft enforcement is a no-op where it works.** Projecting onto
-  `(1 + Sigma)/2` after every QR moves the block by `|ΔQ|/|Q|` = 4e-8, buys
-  a factor ~3 on the contamination (each step re-injects at the current
-  leak), and leaves all 32 exponents unchanged to 9e-12. At D = 4 it is not
-  needed; at D ≥ 8 it cannot help, because there `Sigma` is built at a point
-  that is not swap-symmetric, and projecting onto a sector of the wrong
-  involution is meaningless.
-- **The top exponent is not resolvably odd.** Leading even 0.5395 against
-  leading odd 0.5211 over the same window, the two crossing repeatedly
-  along the way — a gap well inside the convergence wobble. The earlier
-  inference from `a_odd`'s growth rate (+0.649 against λ_max = 0.615) was
-  over-read: that rate belongs to a continuously re-injected quantity, not
-  to a freely evolving perturbation, so it is not a clean sector exponent.
+- **Projecting the vectors is a no-op in a full run and load-bearing in a
+  restricted one.** In a `k = 2n` run at D = 4 it moves the block by
+  `|ΔQ|/|Q|` = 4e-8 and leaves every exponent unchanged to 9e-12. But a
+  *restricted* run has nothing orthogonalizing away the other sector, so
+  leaked weight grows at the gap between the sectors' top exponents until it
+  takes over — 1e-7 injected per step reaches O(1) in ~6 time units at
+  D = 12. Hence `--project-every 10`, which holds the contamination at
+  2–5e-15 (measured across all three production runs).
+- **At D = 12 the top of the spectrum is entirely odd.** With the state held
+  symmetric and `k = 2n`, the leading columns have odd weight 1.0000,
+  0.9997, 0.9996 … falling to the generic 0.45 by column 200, mirrored at
+  the bottom; the 104 columns above the plain run's max average 0.78. Those
+  exponents measure escape *from* the thermofield submanifold, not chaos
+  along it, and they are not stationary: λ_0 runs 0.618 → 0.866 → 1.066 →
+  1.430 over successive windows while the bulk sits still and the middle of
+  the spectrum matches the plain run to four decimals. A fresh Q at t = 18
+  reproduces the elevated value (0.98 against 0.54 plain), so it is the flow,
+  not QR drift. At D = 4 the two sectors' tops are degenerate (0.591 odd
+  against 0.535 even) and QR mixes them, which is why this never showed up
+  before.
 
 ## Consequences
 
-- **Fix the state, not the vectors.** The binding constraint is not the
-  tangent space, which behaves; it is that the point itself leaves the
-  symmetric sector, and it does so in the first two time units, where the
-  bonds are still empty. Enforcement therefore belongs in the *transient*:
-  re-symmetrize `psi -> (psi + S psi)/‖·‖` while s_min is small, which needs
-  an MPS sum at bond 2D recompressed to D — nothing in `states.py` adds two
-  MPS yet, so this is the one piece of new machinery the programme needs.
-  The discarded part is exactly the injected odd component, so at D = 4 the
-  operation is a no-op and at D = 12 it is the whole point.
-- **The D = 8 and D = 12 runs on disk are outside the symmetric sector.**
-  Their exponents are still exponents of the TDVP flow at the points they
-  visit, so the spectra are not nonsense; but those points are not
-  thermofield doubles, and any sector language applied to them is nonsense.
+- **Enforce on the state, in the transient.** That is where all the
+  injection happens, and after a clean start the run holds by itself:
+  `a_odd` ≤ 1.7e-8 across all 250 blocks of every production run, logged per
+  block rather than assumed. `enforce_swap_symmetry(psi, D)` is the
+  projection `psi -> (psi + S psi)/‖·‖` recompressed to D (`mps.add`, added
+  2026-09-22 for this); it loses ≤ 1.1e-14 of the projected state, leaves E
+  unchanged to 8e-12, and at D = 4 does not move the trajectory at all
+  (1 − |⟨plain|enforced⟩| = 1.7e-13 over 160 steps).
+- **Quote the even sector above D = 4.** It is the half that preserves the
+  thermofield structure; the odd half describes leaving it and carries the
+  largest, non-stationary exponents at D = 12. The restricted spectrum is
+  exact: at D = 4 the union of the two sectors reproduces the unrestricted
+  run with rms difference 0.0089 and Σλ agreeing to four decimals.
+- **The k = 2n runs on disk at D = 8 and D = 12 are outside the symmetric
+  sector.** Their exponents are still exponents of the TDVP flow at the
+  points they visit, so the spectra are not nonsense; but those points are
+  not thermofield doubles, and any sector language applied to them is.
 - **The templates are not sector-pure.** `hlm` defaults to `which='phys'`,
   the single-copy energy density, whose odd component is `[A, M(t)]`. That
-  commutator vanishes at the TFD itself but is generically O(1) along the
-  real-time trajectory, so restricting the run would quietly discard part of
-  the diagnostic. A template's own even/odd weight is well defined and cheap
-  to measure — `Sigma` applied to the template's coordinates — and worth
-  measuring before choosing a sector; its *enrichment* against a stored
-  spectrum is not, for the convergence reason above. The fallback is still a
-  win: **running the two sectors separately** costs 1/4 of the current QR
-  and half the storage, loses nothing, and labels every exponent.
+  commutator vanishes at the TFD but is generically O(1) along the
+  trajectory, so a restricted run quietly discards part of the diagnostic.
+  A template's own even/odd weight is cheap to measure (Σ applied to its
+  coordinates) and worth measuring before choosing a sector; its
+  *enrichment* against a stored spectrum is not, for the convergence reason
+  above.
 
-## Staging (revised 2026-09-22 after items 2 and 3 were measured)
+## Left to do
 
-1. ~~Validate the involution.~~ Done — `validate_tangent_swap.py`.
-2. ~~Post-hoc labels, no new runs.~~ **Dead.** The stored vectors are not
-   converged enough to carry a label, for reasons that have nothing to do
-   with the symmetry; see *What the Lyapunov vectors do*. The same argument
-   kills the idea of measuring the templates' even/odd weight against a
-   stored spectrum — the weight is well defined, the thing it would be
-   weighed against is not.
-3. ~~Soft enforcement on the vectors.~~ Done — and it is not the useful
-   knob. Costs 4e-8 per block, changes no exponent, and cannot rescue the
-   D ≥ 8 runs.
-4. **Symmetrize the state through the singular region** (new, and now the
-   first real step). An MPS sum plus compression, applied every step or few
-   steps while s_min ≲ 1e-2, then once more at the end of the transient.
-   Measure: does `a_odd` at t = 8 come down to the D = 4 level at D = 8 and
-   D = 12, and what does that do to λ_max at D = 12? This is worth doing
-   for the D scan alone, independently of ever restricting a run.
-5. **Restricted run.** Only after 4. `k = n` in one sector, seeded from
-   `(1 ± Sigma)/2`, with that sector's own pairing residual as the health
-   check and `a_odd` logged per block; cross-checked at L = 8, D = 4
-   against the union of the two sectors' spectra.
+- **The L scan in the even sector.** Only the D scan has been redone; the
+  L = 12 and L = 16 points are still unrestricted `k = 2n`.
+- **Why the odd sector runs away at D = 12 and not at D = 4.** The
+  escape rate grows with D far faster than the in-sector chaos, and it is
+  not stationary. Unexplained; `‖(1−P)Hψ‖` (2.0, flat) and the entanglement
+  (saturated at ln D in both) rule out the obvious candidates.
+- **Half-sector runs.** `k = 1049` at D = 12 — the non-negative half of the
+  even sector — would give ~2 h and 1.4 GB, at the cost of the pairing
+  residual as a live check.
+- **The per-site Σ.** The production route in *Building the involution*
+  is still unbuilt; it would make Σ `O(D³)` per site and remove the 102 s
+  per projection.

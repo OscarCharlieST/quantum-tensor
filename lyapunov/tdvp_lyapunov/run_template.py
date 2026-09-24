@@ -42,6 +42,7 @@ import qtensor.thermofield as tf
 
 from lyapunov.tdvp_lyapunov.frame import Frame
 from lyapunov.tdvp_lyapunov.stepper import tdvp_step, exact_method, lanczos_method
+from lyapunov.tdvp_lyapunov.symmetry import evolve
 from lyapunov.tdvp_lyapunov.benettin import benettin, load_frame
 from lyapunov.tdvp_lyapunov.plots import FIGS, BLUE, ORANGE, AQUA, MUTED
 from lyapunov.tdvp_lyapunov.hlm import (
@@ -181,6 +182,10 @@ def parse():
     p.add_argument('--tau', type=int, default=1)
     p.add_argument('--transient', type=int, default=160,
                    help='TDVP steps before the template is built and released')
+    p.add_argument('--symmetrize-every', type=int, default=0,
+                   help='project the state onto the swap-even sector every this many '
+                        'transient steps (0 = off). The transient is where the '
+                        'asymmetry is injected; see SWAP_SYMMETRY.md')
     p.add_argument('--kmode', type=int, default=1,
                    help='wavevector index; 1 is the longest non-uniform wave')
     p.add_argument('--copy', default='phys', choices=['phys', 'aux'])
@@ -197,7 +202,8 @@ def main():
     a = parse()
     np.random.seed(a.seed)
     os.makedirs(a.out_dir, exist_ok=True)
-    name = f"L{a.L}_D{a.D}_beta{a.beta:g}_{a.tag}{a.kmode}"
+    sym = '_sym' if a.symmetrize_every else ''
+    name = f"L{a.L}_D{a.D}_beta{a.beta:g}_{a.tag}{a.kmode}{sym}"
     path = os.path.join(a.out_dir, f"{name}.h5")
 
     psi, energy = build_uniform_thermofield(a.L, a.D, a.beta, a.imag_steps)
@@ -206,8 +212,11 @@ def main():
 
     # the transient happens here, not inside benettin, because the template
     # must be built in the frame at the point the tangent flow starts
-    for _ in range(a.transient):
-        psi = tdvp_step(psi, H_sym, a.dt, method)
+    psi, sym_log = evolve(psi, H_sym, a.dt, a.transient, method, a.D,
+                          a.symmetrize_every)
+    if len(sym_log):
+        print(f"transient: projected {len(sym_log)} times, removing "
+              f"a_odd up to {sym_log[:, 1].max():.1e}")
     frame = Frame(psi, a.D)
     q, a_q = seed_vector(frame, a.kmode, a.copy)
     print(f"L={a.L} D={a.D} beta={a.beta}: E/L = {energy / a.L:.4f}, n = {frame.n}, "

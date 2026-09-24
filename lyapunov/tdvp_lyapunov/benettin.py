@@ -23,6 +23,11 @@ Storage (h5)
     t                (n_blocks,)       time after each block
     s_min            (n_blocks, N-1)   smallest Schmidt value per bond
     energy           (n_blocks,)       <H> along the trajectory
+    a_odd            (n_blocks,)       |(1 - S)psi/2|, the swap-odd
+                                       amplitude of the state
+    wrong_sector     (n_blocks,)       weight the carried vectors had in
+                                       the other sector, NaN where not
+                                       measured (restricted runs only)
     Q/<j>            (2n, k)           at blocks j in store_Q_blocks
     frame/<j>/A_L/<site>, .../A_R/<site>, .../V_L/<site>
     state/<site>     final psi, for resuming
@@ -39,6 +44,9 @@ import qtensor.operators as ops
 
 from lyapunov.tdvp_lyapunov.frame import Frame
 from lyapunov.tdvp_lyapunov.stepper import tdvp_step, lanczos_method
+from lyapunov.tdvp_lyapunov.symmetry import (
+    evolve, odd_amplitude, swap_matrix, sector_basis, odd_weight,
+)
 from lyapunov.tdvp_lyapunov.tangent_generator import (
     generator, parallel_transport, propagate,
 )
@@ -73,7 +81,8 @@ def load_frame(grp):
 
 
 def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None,
-             max_bond_dim=np.inf, transient_steps=0,
+             max_bond_dim=np.inf, transient_steps=0, symmetrize_every=0,
+             sector=0, project_every=0,
              store_path=None, store_Q_blocks=(), seed=0, Q0=None,
              verbose=True):
     """
@@ -86,6 +95,23 @@ def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None,
     tau : TDVP steps per QR.
     transient_steps : steps of plain TDVP before the tangent vectors are
         switched on.
+    symmetrize_every : project the state onto the swap-even sector every
+        this many transient steps (0 = never). The transient is where the
+        asymmetry is injected -- see SWAP_SYMMETRY.md -- so a clean one is
+        enough, and a_odd is logged per block to keep that measured rather
+        than assumed.
+    sector : restrict the run to one swap sector: +1 even, -1 odd,
+        0 (default) the whole tangent space. The sectors are invariant
+        under the exact flow and symplectic in their own right, so a
+        restricted run is exact and keeps the +/- pairing check. Pass
+        k = None to carry the whole sector.
+    project_every : with sector set, re-project Q onto that sector every
+        this many blocks. Not optional in practice: the flow commutes
+        with S only to the accuracy of the point (leak ~ 1e-7), and at
+        D = 12 the odd sector holds the largest exponent in the problem,
+        so an unprojected restricted run is eaten by the other sector.
+        The projection is applied before the block's QR, so R accounts
+        for it.
     store_path : h5 file for R, diagnostics, and Q/frames at
         store_Q_blocks (block indices).
     Q0 : optional initial (2n, k) matrix, e.g. from a previous run.
@@ -95,27 +121,55 @@ def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None,
     """
     if method is None:
         method = lanczos_method()
-    psi = psi0
-    for _ in range(transient_steps):
-        psi = tdvp_step(psi, H, dt, method)
+    psi, sym_log = evolve(psi0, H, dt, transient_steps, method,
+                          max_bond_dim, symmetrize_every)
+    if verbose and len(sym_log):
+        print(f"transient: swap-even projection applied {len(sym_log)} times, "
+              f"removing a_odd up to {sym_log[:, 1].max():.1e} "
+              f"(last {sym_log[-1, 1]:.1e}); largest compression cut "
+              f"{np.abs(sym_log[:, 2]).max():.1e}")
     frame = Frame(psi, max_bond_dim)
     n, N = frame.n, len(frame.sites)
     if verbose:
-        print(f"tangent dimension n = {n} (real 2n = {2 * n}), k = {k}, "
-              f"bond dims {frame.bond_dims()}")
-    Q = orthonormal_random(2 * n, k, seed) if Q0 is None else Q0.copy()
+        print(f"tangent dimension n = {n} (real 2n = {2 * n}), "
+              + ("k set by the sector, " if k is None else f"k = {k}, ")
+              + f"bond dims {frame.bond_dims()}")
+    sector_dim = 0
+    if sector:
+        t0 = clock.time()
+        basis = sector_basis(swap_matrix(frame))[0 if sector > 0 else 1]
+        dim = sector_dim = basis.shape[1]
+        if k is None:
+            k = dim
+        assert k <= dim, f'k={k} exceeds the sector dimension {dim}'
+        # a generic starting frame inside the sector, not Sigma's own
+        # eigenbasis, which is ordered by site and starts badly aligned
+        rot = la.qr(np.random.default_rng(seed).normal(size=(dim, k)),
+                    mode='economic')[0]
+        Q = basis @ rot
+        if verbose:
+            print(f"sector {'even' if sector > 0 else 'odd'}: dimension "
+                  f"{dim} of {2 * n}, carrying k = {k}, Sigma in "
+                  f"{clock.time() - t0:.0f} s", flush=True)
+    else:
+        Q = orthonormal_random(2 * n, k, seed) if Q0 is None else Q0.copy()
     A = generator(frame, H)
 
     log_diag = np.zeros((n_blocks, k))
     times = np.zeros(n_blocks)
     s_min = np.zeros((n_blocks, N - 1))
     energy = np.zeros(n_blocks)
+    a_odd = np.zeros(n_blocks)
+    wrong_sector = np.full(n_blocks, np.nan)
     R_store = None
     f = None
     if store_path is not None:
         f = h5py.File(store_path, 'w')
         f.attrs.update({'dt': dt, 'tau': tau, 'k': k, 'n': n,
-                        'transient_steps': transient_steps})
+                        'transient_steps': transient_steps,
+                        'symmetrize_every': symmetrize_every,
+                        'sector': sector, 'project_every': project_every,
+                        'sector_dim': sector_dim})
         # R is upper triangular, so half zeros: lzf roughly halves it, cheaply
         R_store = f.create_dataset('R', (n_blocks, k, k), dtype='f8',
                                    chunks=(1, k, k), compression='lzf')
@@ -126,6 +180,8 @@ def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None,
         f.create_dataset('t', (n_blocks,), dtype='f8')
         f.create_dataset('s_min', (n_blocks, N - 1), dtype='f8')
         f.create_dataset('energy', (n_blocks,), dtype='f8')
+        f.create_dataset('a_odd', (n_blocks,), dtype='f8')
+        f.create_dataset('wrong_sector', (n_blocks,), dtype='f8')
         f.attrs['blocks_done'] = 0
 
     t = transient_steps * dt
@@ -138,11 +194,19 @@ def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None,
             Q = propagate(Q, A, parallel_transport(frame, frame_next), A_next, dt)
             A, psi, frame = A_next, psi_next, frame_next
             t += dt
+        if sector and project_every and j % project_every == 0:
+            # measure the contamination before removing it: with sector
+            # = +1 the carried vectors should have no odd weight at all
+            Sig = swap_matrix(frame)
+            w = odd_weight(Sig, Q)
+            wrong_sector[j] = w.max() if sector > 0 else (1 - w).min()
+            Q = 0.5 * (Q + sector * (Sig @ Q))
         Q, R = positive_qr(Q)
         log_diag[j] = np.log(np.diag(R))
         times[j] = t
         s_min[j] = [s.min() for s in frame.schmidt_values().values()]
         energy[j] = np.real(ops.expect(frame.state(), H))
+        a_odd[j] = odd_amplitude(frame.state())
 
         if f is not None:
             R_store[j] = R
@@ -150,6 +214,8 @@ def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None,
             f['t'][j] = times[j]
             f['s_min'][j] = s_min[j]
             f['energy'][j] = energy[j]
+            f['a_odd'][j] = a_odd[j]
+            f['wrong_sector'][j] = wrong_sector[j]
             f.attrs['blocks_done'] = j + 1
             f.flush()
             if j in store_Q_blocks:
@@ -160,12 +226,17 @@ def benettin(psi0, H, dt, n_blocks, k, tau=1, method=None,
             print(f"block {j + 1}/{n_blocks}  t={t:.3f}  "
                   f"lambda_max={lam[0]:+.4f}  lambda_min={lam[-1]:+.4f}  "
                   f"s_min={s_min[j].min():.1e}  E={energy[j]:.6f}  "
-                  f"[{clock.time() - t_wall:.0f} s]", flush=True)
+                  f"a_odd={a_odd[j]:.1e}  "
+                  + ("" if np.isnan(wrong_sector[j]) else
+                     f"wrong={wrong_sector[j]:.1e}  ")
+                  + f"[{clock.time() - t_wall:.0f} s]", flush=True)
 
     result = {
         'exponents': log_diag.sum(0) / (n_blocks * tau * dt),
         'log_diag_R': log_diag, 't': times, 's_min': s_min,
-        'energy': energy, 'dt': dt, 'tau': tau, 'n': n, 'k': k,
+        'energy': energy, 'a_odd': a_odd, 'wrong_sector': wrong_sector,
+        'dt': dt, 'tau': tau,
+        'n': n, 'k': k,
         'Q': Q, 'frame': frame, 'state': psi,
     }
     if f is not None:
