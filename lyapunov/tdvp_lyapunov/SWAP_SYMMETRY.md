@@ -251,6 +251,29 @@ stays symmetric, so that what is measured is the vectors and not the point.
   *enrichment* against a stored spectrum is not, for the convergence reason
   above.
 
+## From the thermofield notebook (2026-09-24, notebook not kept)
+
+- **Project the state where the bonds are full, or not at all.** The projection discards
+  nothing (recompression cut 3e-15, energy conserved to 4e-13) but rebuilds the state
+  through an SVD, and while s_min ~ 1e-12 the completion past the rank is arbitrary, so each
+  projection re-draws it and the evolution follows a different representation. At L = 8,
+  D = 6: projecting from t = 0 shortened the useful run (D = 6 tracking D = 16 to 10%) from
+  t = 2.0 to 1.6; projecting from t = 1, once the bonds had filled, matched the free run to
+  four figures and still held `a_odd` at 1e-8 against 5e-2. Restricting the *tangent space*
+  has no such cost — it is a change of basis, not a re-truncation — which is why the sector
+  runs are exact and this is not.
+- **Both schemes describe the same density matrix.** `rho = M M†`, and `H_sym`
+  (`M -> e^{-iHt} M e^{-iHt}`) and `H_asym` (`M -> e^{-iHt} M e^{+iHt}`) both give
+  `rho(t) = e^{-iHt} rho e^{+iHt}` — the extra factor cancels against its own dagger. They
+  differ only in the phase the purification carries, hence in how fast the doubled state
+  entangles. Measured on the single-copy `Tr(h_n rho)` at L = 8, D = 6: `H_asym` conserves
+  `Tr(H rho)` to 4e-15, `H_sym` drifts 250% and its profile departs by 50x the profile's own
+  scale. `H_sym` buys a non-trivial trajectory at the fixed point and pays for it in bond
+  dimension.
+- **`H_asym` has no sector to restrict.** It is swap-odd, so projecting onto the even sector
+  there removes the evolution itself — ~95% of the change in the energy profile, a Zeno
+  freeze. Its invariant is the antiunitary `S∘K` (Hermiticity of `M`), not `S`.
+
 ## Left to do
 
 - **The L scan in the even sector.** Only the D scan has been redone; the
