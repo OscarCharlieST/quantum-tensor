@@ -106,8 +106,9 @@ it tracks the swap-odd amplitude of the state,
 `a_odd = |(1 - S)psi / 2|`. Expect `|1 - lambda| ~ leak²`.
 
 Sector dimensions at the start of each production run (t = 8, `a_odd` 1e-8,
-Σ an involution to 2e-14): **330/276** at D = 4, **1102/816** at D = 8,
-**2098/1836** at D = 12. Even always exceeds odd, as the one-site picture
+Σ an involution to 2e-14): at L = 8, **330/276** at D = 4, **1102/816** at
+D = 8, **2098/1836** at D = 12; at D = 4, **538/452** at L = 12 and
+**746/628** at L = 16. Even always exceeds odd, as the one-site picture
 requires — the swap is transposition on a 2×2 matrix, 3 symmetric against 1
 antisymmetric — and the imbalance is `tr Σ = Σ_m tr W_m · tr Ũ_m`, which
 nothing forces to vanish. Read the split only at a clean point: an earlier

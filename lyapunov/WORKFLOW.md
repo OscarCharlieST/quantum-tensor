@@ -357,11 +357,11 @@ before you commit. Big h5 files go outside OneDrive.
 
 ### L and D scan (β = 0.1, 250 blocks at dt = 0.05, transient 160, imag 240)
 
-Quote the **even-sector** runs (2026-09-24). The swap symmetry of the state
+Quote the **even-sector** runs (D scan 2026-09-24, L scan 2026-09-25). The swap symmetry of the state
 was uncontrolled in the 2026-09-21 `k = 2n` set and differs wildly across
 it — `a_odd` = 9e-4 at D = 4, 0.70 at D = 8, 0.68 *before the first block*
 at D = 12 — so its D dependence is not a controlled comparison; the even
-runs differ only in D. See
+runs differ only in the parameter scanned. See
 [`tdvp_lyapunov/SWAP_SYMMETRY.md`](tdvp_lyapunov/SWAP_SYMMETRY.md). Figures
 `<run>_{spectrum,convergence,pairing}.png`, `compare_*.png`.
 
@@ -370,6 +370,8 @@ runs differ only in D. See
 | L8_D4 even | 330 | +0.535 | −2.4e-3 | 4.4e-2 | 0.013 | 32.1 | 0.097 |
 | L8_D8 even | 1102 | +0.539 | −7.6e-3 | 1.1e-2 | 0.014 | 111.8 | 0.101 |
 | L8_D12 even | 2098 | +0.527 | −1.8e-2 | 9.5e-3 | 0.008 | 194.7 | 0.093 |
+| L12_D4 even | 538 | +0.693 | −1.4e-2 | 2.5e-2 | 0.027 | 56.5 | 0.105 |
+| L16_D4 even | 746 | +0.573 | −5.1e-2 | 2.3e-2 | 0.011 | 78.6 | 0.105 |
 | L8_D4 | 606 | +0.575 | −3.6e-3 | 1.5e-2 | 0.014 | 62.6 | 0.103 |
 | L8_D8_ns | 1918 | +0.615 | −1.1e-2 | 1.4e-2 | 0.029 | 218.9 | 0.114 |
 | L8_D12 | 3934 | +0.522 | −3.1e-2 | 7.1e-3 | 0.005 | 393.6 | 0.100 |
@@ -387,9 +389,16 @@ not the flow. This supersedes both "the D scan collapses" and the earlier
 β = 1 reading of a strong non-monotone D dependence; both of those, and the
 initial k = n, β = 1 scans, are superseded data.
 
-The L scan has not been redone in the even sector. At D = 4 the 2026-09-21
-state stayed symmetric to 9e-4, so those three points are the trustworthy
-part of the old set.
+**In L the spectrum collapses; λ_max does not.** The five even-sector runs
+lie on one curve of `λ_i` against `i/dim` — rms 0.015–0.023 across the L
+scan, against convergence spreads of 0.011–0.027 — and Σλ⁺/k is 0.097 /
+0.105 / 0.105, so the flow is extensive in L. `λ_max` alone spreads 0.535 /
+0.693 / 0.573, and at L = 12 the top six exponents are stretched (mean
+spacing 0.026 against 0.006 at L = 8), so the top of that spectrum is
+detached from its bulk. Slow convergence of an extreme value or a real gap
+is not settled by one run; L = 12 also has the largest running spread. The unrestricted runs have the same
+non-monotone shape (0.575 / 0.710 / 0.638), so unlike the D scan this is not
+symmetry breaking. `figures/compare_L_scan_beta0.1_even.png`.
 
 ### Temperature scan (2026-09-17)
 
