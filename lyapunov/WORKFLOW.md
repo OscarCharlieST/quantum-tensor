@@ -279,8 +279,9 @@ What a re-run would be needed for:
 
 - **The q-selectivity caveat** — a β = 1 feature; the diffusive-scaling test
   it calls for is still open.
-- **The flagged dispersion result** — rests on all three retirees, and needs
-  an orthonormal estimator, so a re-run either way.
+- **The flagged dispersion result** — rests on all three retirees, and they
+  each store 11 blocks of Q, which is what a corrected estimator would be
+  tested against. Re-analysis while they exist; a re-run once they do not.
 - **The temperature/time-shift split** has never been redone at β = 0.1, nor
   in the even sector.
 
