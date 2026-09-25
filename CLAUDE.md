@@ -161,6 +161,27 @@ Two subprojects, split because the original question had two different answers:
   Big h5 files go to `C:\Users\charl\lyapunov_runs` (outside OneDrive). The subproject README has
   results and next steps.
 
+  **One-cut study (`cut_*.py`, 2026-09-25): the opposite limit.** With `max_bond_dim = N − m`, where
+  N = d^(L/2) is the full centre bond, only the centre bond is truncated. The manifold is then exactly
+  the rank-r matrix manifold of ψ reshaped across that cut, so the projector, its derivative and the
+  generator have closed forms in one SVD. They are gauge-free and need no frames. At L = 8
+  (N = 256), Route B's dense `n×n` generator (n ≈ 65k) is impossible, but a 256×256 matrix per
+  tangent vector is cheap.
+  - `cut_matrix.py`: the matrix picture.
+  - `cut_rates.py`: trajectory-only rate bounds `±ν_a/s_i`, plus the exact H_sym evolution via the
+    physical H.
+  - `cut_benettin.py`: Route B's step in ambient coordinates. It reproduces Route B's per-block
+    `log R_ii` to 4e-14 at L = 4.
+
+  Two traps met along the way:
+  - Every matrix fed to the stacked GEMMs must be contiguous: a strided slice silently drops numpy
+    off BLAS, costing about 40x.
+  - Integrating the full ambient flow with frozen G and projecting afterwards is second order but
+    loses volume, so it was replaced with the tangent generator plus polar transport.
+
+  The rates here are large (λ_max ≈ 2.7 at L = 6), so **dt = 0.05 is too coarse at L = 8**: it
+  gives a 17% low bias on the top-8 sum. Use dt = 0.0125, as measured by `validate_cut_dt.py`.
+
 Key result worth not re-deriving: `H_asym` is exactly Hermitian and annihilates the thermofield double
 exactly, so the tangent-space projection has a real spectrum and **all Lyapunov exponents at that fixed
 point are exactly zero**. Nonzero exponents require linearizing along a trajectory where `Hψ ≠ 0`, where
@@ -181,9 +202,6 @@ D ≤ 4 produced before this fix are suspect**, including in the notebooks.
   while MPS tensors and most `ncon` contractions default to numpy's `complex128` — this mixed precision
   is scattered through `operators.py`/`thermofield.py` and doesn't look deliberate; be aware it can
   silently upcast/downcast if you're chasing a precision or performance issue.
-- Truncation only happens where `max_bond_dim` is explicitly threaded through (`left_orthogonal_tensor` /
-  `right_orthogonal_tensor` and the `mps` methods that wrap them); by default it's `np.inf` (no
-  truncation), so bond dimension can grow unchecked during evolution unless a caller opts in.
 - `states.centralize_state`/`mps.centralize()` still silently discard the state's norm when normalizing
   the new centre tensor (the same issue `left_orthogonal_state`/`right_orthogonal_state`/`mps.apply()` had
   until it was fixed to return that norm) — not yet fixed, since `centralize` isn't on the `apply()` path.

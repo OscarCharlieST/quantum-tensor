@@ -6,7 +6,10 @@ swap-sector runs since 2026-09-24.** The tangent map is the exact generator
 ("Route B"), cross-validated against a since-removed finite-difference
 implementation. Runs cover L = 8, 12, 16 at D = 4 and D = 4, 8, 12 at
 L = 8, the last three redone in the swap-even sector, with covariant
-Lyapunov vectors.
+Lyapunov vectors. Since 2026-09-25 there is also the opposite limit: only
+the centre bond truncated, just below full rank. It is treated in closed
+form as the rank-r matrix manifold, and validated against Route B; see
+"Near full bond dimension".
 
 Headline: the half spectrum is extensive per tangent dimension and
 route/dt-independent, and λ_max does not depend on D once the
@@ -749,6 +752,152 @@ not for reading any one vector.
 >
 > Nothing above has been rerun; the linear fit and the claim of no
 > diffusive branch should be treated as unverified until it is.
+
+## Near full bond dimension: one truncated cut (2026-09-25)
+
+The opposite limit to the D scan. At L = 8 with `max_bond_dim = 256 − m`,
+the staircase caps every other bond below 256, so the bond dimensions are
+`(4,16,64,r,64,16,4)`: **only the centre cut is truncated**. The manifold is
+then exactly the rank-r matrix manifold of Ψ reshaped across that cut
+(codimension m², tangent dimension N² − m², N = 256). Route B cannot run
+here (n ≈ 65k), but it does not need to. At this size the whole state fits
+in memory, and the tangent projector, its derivative and the generator have
+closed forms in one SVD of Ψ. These use only projectors and Ψ⁺, so they are
+gauge-free.
+
+**Structure.** The curvature enters only through the m×m normal core
+`Ñ = U_⊥† HΨ V_⊥`, to which only the cross-cut MPO terms contribute. It swaps
+the two cross blocks `U_⊥†ξV` and `U†ξV_⊥` (4mr real directions), leaving the
+r×r core untouched. The symmetric part of the generator has eigenvalues
+exactly `±ν_a/s_i`, each twice (`ν = svd(Ñ)`, `s` the kept Schmidt values).
+For the continuous flow, that gives
+
+    λ_max ≤ ⟨ν_1 / s_r⟩_t,      h_KS = Σλ⁺ ≤ ⟨2 ‖Ñ‖_* tr s⁻¹⟩_t
+
+from the trajectory alone.
+
+**Code.**
+- `cut_matrix.py`: `mpo_cut_terms` (H = Σ L_c ⊗ R_c read off the MPO),
+  `mps_to_matrix` / `dense_to_mps`, and `CutPoint` (projector `P`,
+  derivative `dP`, `generator`, `normal_core`, `rate_spectrum`,
+  `rate_bounds`).
+- `cut_rates.py`: `ExactThermofield`, the exact H_sym evolution via the
+  256×256 physical H, using M → U M Uᵀ, plus `run_rates`.
+- `run_cut_rates.py`: the Tier 0 m-scan driver.
+- `cut_benettin.py` / `run_cut_lyapunov.py`: Tier 1, tangent propagation
+  (below).
+- `validate_cut.py`: rungs 1–5 (the matrix picture against Route B at a
+  point).
+- `validate_cut_benettin.py`: rungs 6–7 (the Benettin loop against Route B
+  along a trajectory).
+- `validate_cut_dt.py`: the fixed-trajectory time-step test.
+
+**Validation.** At L = 4 (m = 1–4) and L = 6 (m = 2, 40), the tangent part of
+the closed-form generator equals Route B's `generator(frame, H)` to 3e-15,
+and the symmetric-part spectrum equals `±ν_a/s_i` (×2) to 2e-14. `P` also
+matches the V_L frame projector. The dense TFD matches the imaginary-time
+build to 2e-16, and the exact propagator matches a Taylor series to 7e-15.
+
+**Tier 0 (trajectory diagnostics only, no tangent vectors).** Setup: the
+β = 0.1 TFD was evolved exactly to t = 20, where the cut entropy is 4.42 of a
+possible 5.55 at L = 8, then truncated to rank r and run with TDVP for t = 10
+(dt = 0.05; the diagnostics change by about 1% at dt = 0.025). Rank and energy
+hold to 1e-16 and 1e-13. Files: `runs/cut_rates_L{6,8}_m*_beta0.1.h5`, logs
+`runs/cut_rates_L{6,8}.log`, figures `figures/cut_rates_L{6,8}_beta0.1_*.png`.
+
+| L=8, m | ⟨s_r⟩ | ⟨ν_1⟩ | ⟨ν_1/s_r⟩ | h_KS bound / 2mr | 1−F at t=10 | discarded at start |
+|---|---|---|---|---|---|---|
+| 1 | 3.7e-4 | 0.005 | 19.5 (median 13.5) | 0.47 | 3.5e-5 | 4.5e-8 |
+| 4 | 9.1e-4 | 0.012 | 14.3 | 0.49 | 4.1e-4 | 2.6e-6 |
+| 16 | 2.6e-3 | 0.028 | 10.9 | 0.59 | 9.2e-3 | 7.4e-5 |
+| 64 | 1.1e-2 | 0.062 | 5.9 | 0.64 | 0.20 | 4.1e-3 |
+
+1. **s_r sits on the square-matrix hard edge.** ⟨s_r⟩ ≈ (0.7–1.5)·m/N^{3/2}
+   at both N = 64 and N = 256, as for a Gaussian N×N matrix. Near full rank,
+   the curvature 1/s_r is set by the random-matrix edge, not by physics.
+2. **The two factors almost cancel.** 1/s_r falls like m^{-0.9} and ν_1
+   rises like m^{0.6}, so the λ_max bound only falls from 19 to 6 over
+   m = 1 → 64. It stays an order of magnitude above the measured
+   λ_max ≈ 0.53 of the small-D runs. Whether the true λ_max is anywhere near
+   it is a Tier 1 question. At m = 1, s_r grazes zero intermittently (down to
+   4e-5), which produces the bound's spikes.
+3. **The h_KS bound is linear in the size of the non-unitary subspace.**
+   Per direction it is 0.44–0.64 at N = 256 and 0.63–0.81 at N = 64, roughly
+   independent of m. Restricting the chaos to fewer directions does not make
+   each one weaker: at the bound level, the reduced scope is entirely the
+   2mr count.
+4. **The fidelity cost is much larger than the discarded weight.** 1−F after
+   t = 10 is roughly 50–800 times the weight truncated at the start. The ratio
+   is largest at small m.
+
+**Tier 1: tangent propagation (machinery done 2026-09-25, no production
+runs yet).** `cut_benettin.py` is Route B's step, `e^{dt/2 A'} T e^{dt/2 A}`,
+written in ambient coordinates. Vectors are 256×256 matrices, `A` is the
+tangent part of G (`CutPoint.tangent_generator`, 18 batched GEMMs per
+vector), and `T` is the polar factor of the projection, applied through
+Route B's two Newton–Schulz iterations using projector products, so no
+frame or basis is ever built. Driver: `run_cut_lyapunov.py`. Checks in
+`validate_cut_benettin.py`:
+- At m = 0, all exponents are below 3e-7 (the polar-approximation floor).
+- Along the same trajectory and from the same starting vectors, the
+  per-block `log R_ii` equal Route B's to 4e-14 (L = 4, m = 2 and 4, k = 2n).
+
+A first version integrated the full ambient flow with frozen G and
+projected at the end of each step. That is second order, but it is not
+volume-preserving: it loses volume at `O(dt²)` through the normal detour
+(−0.13 per unit time at dt = 0.05). It was replaced.
+
+Cost: the stacked G needs contiguous operands. A strided `L_c` or `U[:, :r]`
+drops numpy's matmul off BLAS and cost about 40x. At L = 8, one step takes
+about 0.65 s per vector plus the 3 s TDVP step: 46 s at k = 64, so 3.2 h
+for 250 blocks. The trajectory integrator is therefore not the lever.
+A full spectrum at L = 6 (k = 8158) takes 813 s per step, which is
+impractical; at L = 4 it is a minute per 100 blocks.
+
+First look (L = 6, m = 4, k = 32, t = 10): `λ_max ≈ 2.7–3.0`, five times
+the small-D value, and still under `⟨ν_1/s_r⟩ ≈ 10`. The top two exponents
+sit apart from the rest (2.7, 2.6, then 1.2).
+
+**Time step (fixed-trajectory test, `validate_cut_dt.py`).** Whole runs at
+different dt cannot settle this: the trajectory is itself chaotic at λ ≈ 3,
+so they decorrelate by t ≈ 2 and their difference mixes discretization error
+with finite-time noise. The test computes one trajectory at dt = 0.00625 and
+carries the same starting vectors along it with the tangent step coarsened
+to every s-th point. The differences are then the tangent integrator's error
+alone. Errors below are against the dt = 0.00625 reference:
+
+| tangent dt | L=6 m=4 k=32 t=10: λ_1 err | max err | L=8 m=4 k=8 t=2.5: λ_1 err | max err | sum err |
+|---|---|---|---|---|---|
+| 0.0125 | 5.1e-3 | 5.1e-3 | 9.7e-3 | 2.6e-2 | 0.11 (1.1%) |
+| 0.025 | 2.6e-2 | 2.6e-2 | 4.5e-2 | 0.12 | 0.51 (5%) |
+| 0.05 | 0.11 | 0.11 | 0.16 | 0.41 | 1.71 (17%) |
+| 0.1 | 0.50 | 0.58 | — | — | — |
+
+- The error is second order (×4–5 per doubling) and always biases the
+  exponents *low*.
+- At L = 6 it sits in the fast top exponents; from λ_9 on, the error is
+  about 5e-3 even at dt = 0.05.
+- At L = 8 the constant is about twice as large and reaches every exponent
+  of the top 8, so **dt = 0.05 is unusable at L = 8.**
+- Richardson extrapolation from dt = 0.0125 and 0.025 (same trajectory)
+  lands within about 0.1% of the reference sum. From 0.025 and 0.05 it is
+  off by about 1.4%, because 0.05 is outside the dt² regime.
+- Tangent cost per vector per unit time at L = 8: 42 / 24 / 14 s at
+  dt = 0.0125 / 0.025 / 0.05, plus the trajectory at 3.2 s per step.
+
+**Production choice: dt = 0.0125 at L = 8** (about 1% bias, comparable to
+the finite-time noise of the small-D runs), which costs about 5 h per m at
+k = 32 or about 10 h at k = 64 for t = 12.5. dt = 0.025 is enough at L = 6.
+The worst case, m = 1, where s_r grazes zero intermittently, was started and
+aborted. It may need a finer step, so run `validate_cut_dt.py --L 8 --m 1 --k 8
+--T 2.5` (about 75 min) before an m = 1 production run.
+
+**Next for this strand:**
+1. The m = 1 dt check.
+2. L = 4 full spectra, m = 1–4 (minutes). Is the positive spectrum confined
+   to about 2mr exponents, or spread over the whole tangent space?
+3. The L = 8 top-k scan, m ∈ {1, 4, 16, 64} at dt = 0.0125, with the output
+   in `C:\Users\charl\lyapunov_runs`.
 
 ## Next
 
