@@ -23,6 +23,56 @@ def inf_T_thermofield(N, D, noise=0):
     tensor_list = [M_L] + Ms + [M_R]
     return states.mps(tensor_list)
 
+# The doubled physical index is i = 2 * a_phys + b_anc, so exchanging the two
+# copies is the permutation 2a + b -> 2b + a. inf_T_thermofield's seed
+# [1, 0, 0, 1] = |00> + |11> is a fixed point of it.
+SWAP_COPIES = [0, 2, 1, 3]
+
+
+def swap_copies(psi):
+    """
+    S|psi>: exchange the physical and ancilla copy on every site. Takes and
+    returns {site: tensor}; an mps is accepted and unwrapped.
+
+    In the vectorization psi <-> M this is transposition, S|M>> = |M^T>>. The
+    thermofield double is built from rho^(1/2) and so is a fixed point of it,
+    and H_sym = H x I + I x H keeps it there (M -> e^{-iHt} M e^{-iHt} for
+    real symmetric H). H_asym = H x I - I x H does *not*: it sends
+    M -> e^{-iHt} M e^{+iHt}, which preserves Hermiticity of M rather than
+    symmetry.
+    """
+    tensors = psi.tensors if hasattr(psi, 'tensors') else psi
+    return {site: T[SWAP_COPIES, :, :].copy() for site, T in tensors.items()}
+
+
+def swap_odd_amplitude(psi):
+    """
+    |(1 - S) psi / 2|: how far the state is from swap-symmetric. Linear in the
+    asymmetry, unlike <psi|S|psi>, which is 1 - 2 a^2 and so hides it.
+    Saturates at 1/sqrt(2), where psi is orthogonal to its own swap.
+    """
+    norm = abs(states.overlap(psi, psi))
+    ov = states.overlap(psi, states.mps(swap_copies(psi))) / norm
+    return float(np.sqrt(max(0.0, (1.0 - ov.real) / 2.0)))
+
+
+def symmetrize_copies(psi, max_bond_dim=None):
+    """
+    Project onto the swap-even sector: (psi + S psi)/||.||, recompressed to
+    max_bond_dim (the state's own largest bond dimension by default, since the
+    sum lives at bond 2D). Does not mutate psi; returns a normalized state.
+
+    Use it where the dynamics is swap-even and the numerics is not: an MPS
+    truncated at a rank-deficient bond picks its null directions arbitrarily
+    and drifts out of the sector. See lyapunov/tdvp_lyapunov/SWAP_SYMMETRY.md.
+    """
+    if max_bond_dim is None:
+        max_bond_dim = max(T.shape[2] for T in psi.tensors.values())
+    out = copy.deepcopy(psi)
+    out.add(states.mps(swap_copies(psi)), max_bond_dim=max_bond_dim)
+    return out
+
+
 def th_onesite(A, site):
     """
     Takes a single-site spin 1/2 operator (as amatrix) and returns the thermofield mpo reprsentation 
@@ -89,10 +139,19 @@ def thermofield_hamiltonian(H, asym=False):
     r = np.array([0, 0, 0, 1])
     return ops.mpo(H_th, l, r)
 
-def finite_T_thermofield(beta,  H, steps=100, 
+def finite_T_thermofield(beta,  H, steps=100,
                          initial_state=None, N=2, D=4,
-                         plot=True, method=None):
-    if not initial_state:    
+                         plot=True, method=None, sym_every=0):
+    """
+    Imaginary-time evolve to inverse temperature beta.
+
+    sym_every: project onto the swap-even sector every this many steps
+    (0 = never). The build is where the state is most rank-deficient, and a
+    rank-deficient truncation is what knocks it out of the sector; see
+    symmetrize_copies. Costs one MPS sum and a recompression per projection,
+    and forces the cached environments to be rebuilt on the next step.
+    """
+    if not initial_state:
         state = inf_T_thermofield(N, D)
     else:
         state = copy.deepcopy(initial_state)
@@ -100,10 +159,23 @@ def finite_T_thermofield(beta,  H, steps=100,
         pass
     if not method:
         method = methods.lanczos_method(max_iters=8)
-    _, expectations = sim.tdvp(state, H, -1j*beta*1/4, steps, method, 
-                                   history=True, extensive_operators=[H])
-    time = np.abs(list(expectations.keys()))*4
-    energy = np.real([opexp[0] for opexp in expectations.values()])/2
+    bond_dim = max(T.shape[2] for T in state.tensors.values())
+    t_f = -1j * beta * 1/4
+    dt = t_f / steps
+    # steps + 1 evolutions, recording before each: what sim.tdvp does, kept so
+    # that existing builds reproduce. Note it leaves the state one dt past
+    # t_f, i.e. at beta * (1 + 1/steps).
+    times, energies = [], []
+    env = None
+    for step in range(steps + 1):
+        times.append(abs(step * dt) * 4)
+        energies.append(np.real(ops.expect(state, H)) / 2)
+        state, env = sim.tdvp_step(state, H, dt, method, env)
+        if sym_every and (step + 1) % sym_every == 0:
+            state = symmetrize_copies(state, bond_dim)
+            env = None          # the environments belong to the old state
+    time = np.array(times)
+    energy = np.array(energies)
     if plot:
         _, ax = plt.subplots(1,1)
         ax.plot(time, energy)
@@ -112,7 +184,7 @@ def finite_T_thermofield(beta,  H, steps=100,
         print("Energy at finite temperature:", energy[-1])
     return state, time, energy
 
-def near_thermal(H, profile, initial_state, steps=100):
+def near_thermal(H, profile, initial_state, steps=100, sym_every=0):
     """
     Perform imaginary time evolution with a spatially varying temperature profile.
     
@@ -137,7 +209,8 @@ def near_thermal(H, profile, initial_state, steps=100):
 
     H_eff = ops.mpo(H_new, H.l, H.r)
     state, _, _ = finite_T_thermofield(1, H_eff, initial_state=initial_state,
-                                       steps=steps, plot=False)
+                                       steps=steps, plot=False,
+                                       sym_every=sym_every)
     return state
 
 def near_thermal_delta_function(H, bond, delta_beta, initial_state, steps=10):

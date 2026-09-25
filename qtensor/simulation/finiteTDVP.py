@@ -29,6 +29,35 @@ Indexing:
     2                           2             2 
 """
 
+def tdvp_step(state, operator, dt, method, env=None):
+    """
+    One TDVP time step: a right sweep then a left sweep, leaving the state
+    right-canonical with its centre at the first site.
+
+    env is the (L_con, R_con) pair this function returns. Threading it back in
+    is what makes a loop over this function as cheap as the loop inside tdvp():
+    the O(N) right_mpo_contractions build happens once, and thereafter each
+    sweep hands the next its environments. Pass None on the first call, and
+    again whenever the state is changed behind this function's back (a
+    projection, a truncation, an operator applied) -- the cached environments
+    belong to the state that produced them.
+
+    The state is mutated in place as well as returned.
+    """
+    sites = sorted(state.sites)
+    if env is None:
+        state.right_orthogonal()
+        R_con = right_mpo_contractions(state, operator)
+        L_con = {min(sites)-1 : ncon((np.eye(1), operator.l), ((-1, -2), (-3,)))}
+    else:
+        L_con, R_con = env
+    state, L_con, _ = tdvp_sweep_r(state, operator, dt, L_con, R_con, method)
+    state, _, R_con = tdvp_sweep_l(state, operator, dt, L_con, R_con, method)
+    # tdvp_sweep_l leaves the centre at the first site: the right-canonical form
+    state.form, state.c_site = 'right', min(sites)
+    return state, (L_con, R_con)
+
+
 def tdvp(state, operator, t_f, steps, 
          method=methods.lanczos_method(epsilon=1e-5, max_iters=16),
          history=False, 
@@ -44,11 +73,7 @@ def tdvp(state, operator, t_f, steps,
     state_history = {}
     expectations = {}
 
-    state.right_orthogonal()
-    sites = sorted(state.sites)
-    R_con = right_mpo_contractions(state, operator)
-    L_con = {min(sites)-1 : ncon((np.eye(1), operator.l), ((-1, -2), (-3,)))}
-
+    env = None
     b = progressbar.ProgressBar(maxval=steps+1, line_breaks=False)
     b.start()
     step=0
@@ -64,8 +89,7 @@ def tdvp(state, operator, t_f, steps,
             expectations[t] = [ops.local_expect(state, op) for op in kwargs['operators']]
         if 'extensive_operators' in kwargs:
             expectations[t] = [ops.expect(state, op) for op in kwargs['extensive_operators']]
-        state, L_con, _ = tdvp_sweep_r(state, operator, dt, L_con, R_con, method)
-        state, _, R_con = tdvp_sweep_l(state, operator, dt, L_con, R_con, method) 
+        state, env = tdvp_step(state, operator, dt, method, env)
         if 'termination_func' in kwargs:
             terminate = kwargs['termination_func']
             # signature should be f(state, t) = bool
