@@ -264,26 +264,29 @@ live in the markdown with their numbers, its figures under
 2026-09-24, so the β ≠ 0.1 h5 is retired. Not yet deleted — this section is
 the record that clears it to go.
 
-The nine files total 16.2 GiB and regenerate in ~5 h. A re-run would be
-better than the original due to no seed noise, k = 2n, and swap-symmetry
-control.
+The eight retired files total 14.2 GiB and regenerate in ~4 h. A re-run
+would be better than the original due to no seed noise, k = 2n, and
+swap-symmetry control. `L16_D4_beta1_k2n` (2.0 GiB) is **kept** as the
+representative of the effects below.
 
 | retired | GiB | regen | what it established | recorded in |
 |---|---|---|---|---|
 | `L8_D4_beta1`, `L8_D4_beta1_dt025` | 0.45 | — | Route A = Route B, dt 0.05 = 0.025 | `figures/compare_dt_route.png`; Route A was deleted 2026-09-17, so this is unreproducible either way |
 | `L8_D8_beta1`, `L12_D4_beta1`, `L16_D4_beta1`, `L8_D12_beta1` | 6.05 | ~3 h | the first L and D scan, k = n | superseded twice — β = 0.1 at k = 2n, then the even sector. `figures/L*_beta1_{spectrum,convergence}.png` |
 | `L8_D8_beta1_k2n`, `L8_D8_beta0.01_k2n` | 7.71 | ~1.7 h | with `L8_D8_beta0.1_k2n` (kept): conditioning improves with temperature (s_min 0.096 → 0.21, pairing 0.048 → 0.009) and the flow saturates by β = 0.1 (λ_max 0.436 / 0.533 / 0.542) | **the β = 0.1 default.** README "Temperature scan"; `figures/compare_beta_*.png` |
-| `L16_D4_beta1_k2n` | 1.98 | 39 min | k = 2n over k = n (near-zero enrichment at k = n was an artefact of the half); measure in the GS basis, CLVs only in narrow bands (condition number 2e17 at 1374 against ~1e1 at 120); the temperature/time-shift split, 0.44/1.69 against 1.70/0.37 at q = 0 | README "Hydrodynamic modes"; `figures/L16_D4_beta1_k2n_*.png` |
 
-What a re-run would be needed for:
+`L16_D4_beta1_k2n` is kept because three open items run through it: the
+temperature/time-shift split (0.44/1.69 against 1.70/0.37 at q = 0), which
+has never been redone at β = 0.1 nor in the even sector; the L = 16
+q-selectivity a β = 1 diffusive-scaling test would start from; and the
+flagged dispersion fit, whose 11 stored blocks of Q are what a corrected
+phase-free estimator gets tested against — on the same vectors, which a
+re-run could not give. It also carries the k = 2n and Gram-Schmidt-basis
+decisions.
 
-- **The q-selectivity caveat** — a β = 1 feature; the diffusive-scaling test
-  it calls for is still open.
-- **The flagged dispersion result** — rests on all three retirees, and they
-  each store 11 blocks of Q, which is what a corrected estimator would be
-  tested against. Re-analysis while they exist; a re-run once they do not.
-- **The temperature/time-shift split** has never been redone at β = 0.1, nor
-  in the even sector.
+What goes with the eight is the *temperature dependence* of those effects
+— enrichment 1.37 / 1.67 / 1.66 and the dispersion slope 0.086 at β = 1
+against 0.16 at β = 0.01 — which only the scan measures.
 
 **Code pointing at retired files**, to repoint or drop in the same pass:
 `compare_runs.py`'s `dt_route` scan (the only executable reference),
@@ -293,15 +296,15 @@ figures stay), and the docstring examples in `plots.py`, `run_hlm.py`,
 
 ### The rest of the run directory (2026-09-25)
 
-71.6 GiB, not the 20.0 GiB the old inventory claimed. Retiring β ≠ 0.1
-recovers 16.2; the larger target is D = 12.
+**54.8 GiB** after the deletion below — the old inventory claimed 20.0.
+Retiring the eight β ≠ 0.1 files would recover another 14.2.
 
 | file | GiB | status |
 |---|---|---|
-| `L8_D12_beta0.1_k2n` | 17.9 | superseded for every quoted number; this is the uncontrolled run that entered its first block at `a_odd` = 0.68 |
+| `L8_D12_beta0.1_k2n` | — | **deleted 2026-09-25.** Superseded for every quoted number; it was the uncontrolled run that entered its first block at `a_odd` = 0.68. Its spectrum, convergence and pairing figures are committed, as are both comparisons that used it |
 | `L8_D12_beta0.1_k2n_sym` | 17.9 | **keep** — the only evidence for the odd-sector runaway (λ_max → 1.43), an open question in `SWAP_SYMMETRY.md` |
 | `L8_D12_beta0.1_even_sym` | 5.9 | the quoted D = 12 run |
-| the other eight β = 0.1 files | 13.7 | the L and D scan at k = 2n, the D = 4 and D = 8 even-sector runs, the template run |
+| the other 10 β = 0.1 files | 14.8 | the L and D scan at k = 2n, the D = 4 and D = 8 even-sector runs, the template run |
 
 ## tdvp_lyapunov (2026-09-16)
 

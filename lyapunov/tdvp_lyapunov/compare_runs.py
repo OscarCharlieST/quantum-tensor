@@ -24,16 +24,14 @@ from lyapunov.tdvp_lyapunov.plots import load_run, FIGS, MUTED, BLUE, ORANGE, AQ
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNS = 'C:/Users/charl/lyapunov_runs'     # h5 files live outside OneDrive
 
+# The unrestricted D scan and the plain-vs-symmetrized D = 12 comparison were
+# dropped on 2026-09-25 with L8_D12_beta0.1_k2n.h5, the arm both needed; their
+# figures are committed. See WORKFLOW.md, "The rest of the run directory".
 SCANS = {
     'L_scan_beta0.1_k2n': ('beta = 0.1, D = 4, L scan', [
         ('L = 8',  f'{RUNS}/L8_D4_beta0.1_k2n.h5'),
         ('L = 12', f'{RUNS}/L12_D4_beta0.1_k2n.h5'),
         ('L = 16', f'{RUNS}/L16_D4_beta0.1_k2n.h5'),
-    ]),
-    'D_scan_beta0.1_k2n': ('beta = 0.1, L = 8, D scan', [
-        ('D = 4',  f'{RUNS}/L8_D4_beta0.1_k2n.h5'),
-        ('D = 8',  f'{RUNS}/L8_D8_beta0.1_k2n_ns.h5'),
-        ('D = 12', f'{RUNS}/L8_D12_beta0.1_k2n.h5'),
     ]),
     'L_scan_beta0.1_even': ('beta = 0.1, D = 4, L scan, even sector', [
         ('L = 8',  f'{RUNS}/L8_D4_beta0.1_even_sym.h5'),
@@ -44,12 +42,6 @@ SCANS = {
         ('D = 4',  f'{RUNS}/L8_D4_beta0.1_even_sym.h5'),
         ('D = 8',  f'{RUNS}/L8_D8_beta0.1_even_sym.h5'),
         ('D = 12', f'{RUNS}/L8_D12_beta0.1_even_sym.h5'),
-    ]),
-    'swap_sym_D12': ('L = 8, D = 12: with and without the swap-even '
-                     'projection through the transient', [
-        ('D = 12, plain',        f'{RUNS}/L8_D12_beta0.1_k2n.h5'),
-        ('D = 12, symmetrized',  f'{RUNS}/L8_D12_beta0.1_k2n_sym.h5'),
-        ('D = 4 reference',      f'{RUNS}/L8_D4_beta0.1_k2n.h5'),
     ]),
     'dt_route': ('L = 8, D = 4: time step and route', [
         ('Route B, dt = 0.05',  f'{RUNS}/L8_D4_beta1.h5'),
