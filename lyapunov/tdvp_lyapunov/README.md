@@ -509,7 +509,7 @@ symmetry breaking. `figures/compare_L_scan_beta0.1_even.png`.
 ## Hydrodynamic modes: the template analysis (2026-09-17, k = 2n)
 
 `L16_D4_beta1_k2n` — L = 16, D = 4, k = 2n = 1374, 250 blocks, 39 min,
-2.1 GB. Both halves of the spectrm. Trying to cheat by only solving for positive exponents lead to spurious enrichment near zero exponent.
+2.1 GB. Both halves of the spectrum. Trying to cheat by only solving for positive exponents lead to spurious enrichment near zero exponent.
 
 
 
@@ -532,7 +532,17 @@ orthonormal Gram–Schmidt vectors at a stored block and measure the
 divided by `m/k`, the share a uniform spread would give. 1 is chance, and
 the comparison is valid across bands and band sizes. Covariant vectors are
 used only to *build* candidate modes — they are not orthonormal, so they
-give no clean decomposition — while the GS filtration is used to w information.
+give no clean decomposition — while the GS filtration is used to *measure*.
+
+**Why the negative half is not derivable from the positive half.** The flow
+is Hamiltonian, so the tangent map preserves ω and
+`ω(E^λ, E^μ) = 0 unless λ + μ = 0`: ω is constant along the flow while the
+pair's norms grow as `e^{(λ+μ)t}`, so the form must vanish unless the
+exponents cancel. Each contracting direction is therefore the symplectic
+conjugate of exactly one expanding direction. But the expanding half spans
+a *Lagrangian* subspace (ω vanishes identically on it), and a Lagrangian
+subspace does not determine a complement — there is an infinite family. The
+contracting vectors carry genuinely new information.
 
 **Spectrum-level pairing holds.** `Σλ = −0.139`, which is 0.14% of `Σ|λ|`;
 the residual `λ_i + λ_{2n+1−i}` has rms 0.0014 and max 0.015 (5% of
@@ -540,7 +550,8 @@ the residual `λ_i + λ_{2n+1−i}` has rms 0.0014 and max 0.015 (5% of
 level spacings — as expected from a finite averaging time.
 
 **Vector-level conjugacy is not resolvable here, by two independent
-limits.** The spectrum is dense (1374 exponents in [−0.29, +0.30]), sual Oseledets directions are near-degenerate and numerically
+limits.** The spectrum is dense (1374 exponents in [−0.29, +0.30]), so
+individual Oseledets directions are near-degenerate and numerically
 arbitrary within a cluster; and the Ginelli backward pass loses column
 independence at this size (the CLV matrix has condition number 2e17,
 against a well-conditioned ~1e1 for a 120-vector band). So the symplectic
@@ -564,9 +575,7 @@ averaged over 11 blocks, m = 120 of 1374:
 - **The long-wavelength temperature template lives on the *contracting*
   directions**, not on the near-zero ones: bottom band 1.69 at q = 0
   falling monotonically to ~1.0 at q = π, top band 0.44 rising to 0.81.
-  Both near-zero bands sit at chance
-
- does not.
+  Both near-zero bands sit at chance (0.8–1.13).
 
 **The asymmetry is the symplectic structure, not a basis artefact.** The
 Gram–Schmidt basis is the forward Oseledets filtration and so is not
@@ -612,14 +621,24 @@ opposite of the worry.** The smallest Schmidt value *rises* from 0.096 at
 (0.048 → 0.009). `Σλ` stays within 0.013 of zero. The concern that the
 nearly-rank-1 β = 1e-2 thermofield double would leave the tangent space
 built on numerically null directions does not materialize: the evolution
-fills the bond dimension before the tangent vectors oingt
-2 higher temperatures.
+fills the bond dimension before the tangent vectors are switched on.
+(Written at the time as "the noise seeding plus 160 steps of real-time
+`H_sym` evolution"; the noise turns out to be doing none of that work — see
+`relaxation/README.md`, "On the seeding noise". The runs below did use
+`noise = 1e-2`, so their `ψ*` carries that artefact, but the bond dimension
+would have filled without it.) **Nothing here blocks going to β = 1e-2.**
+
+**2. The flow saturates by β = 0.1.** The β = 0.1 and β = 0.01 spectra lie
+on top of each other over the whole range (λ_max 0.533 vs 0.542), while
+β = 1 is visibly less chaotic (0.436). So the infinite-temperature limit is
+already reached at β = 0.1 for this L and D, and β = 0.01 buys nothing —
+worth knowing before spending runs on even higher temperatures.
 
 **3. The temperature/time-shift split survives and strengthens.** The
 contracting-band enrichment of the local-temperature template at the
 longest wavelength goes 1.37 → 1.67 → 1.66, and the expanding-band
 depletion is ~0.22–0.27 at q = 0 at every β. The effect is not a
-low3temperature artefact.
+low-temperature artefact.
 
 **4. But the *wavevector selectivity* is a β = 1 feature.** At β = 1 the
 enrichment falls monotonically with q, 1.28 at q = 0 to 0.88 at q = π — long
@@ -629,7 +648,7 @@ perturbation aligns with the contracting directions about equally. A
 hydrodynamic mode needs long wavelengths to be *distinguished*; that scale
 separation is present at β = 1 and largely gone at high temperature.
 Caveat: L = 8 resolves only 7 wavevectors, so this should be rechecked at
-L = 16 before being leaned on — the β = 1, L = 16 run does show the 4lean
+L = 16 before being leaned on — the β = 1, L = 16 run does show the clean
 monotone decay.
 
 **5. Candidate modes stay clean at every temperature** (`compare_beta_modes.png`):
