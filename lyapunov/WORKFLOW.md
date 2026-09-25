@@ -255,25 +255,52 @@ Fix: derive `C^n` from the bond matrices (`C^n = Λ^{n-1} A_R^n`,
   because the residual becomes build-limited there. See
   `relaxation/README.md`, "Cost and convergence".
 
-### Housekeeping: delete the β ≠ 0.1 run data
+### Retired run data (β ≠ 0.1)
 
-**Wanted (2026-09-18, Charlie).** `C:\Users\charl\lyapunov_runs` holds
-20.0 GB of `tdvp_lyapunov` h5 output and β = 0.1 has been the standing
-default since 2026-09-17. Everything at another temperature is to go. The
-decisions that were taken off the back of the β = 1 runs will be recorded
-separately first — **that write-up is the blocker, not the deletion**, and
-it is Charlie's call how it is recorded.
+`C:\Users\charl\lyapunov_runs` is not version-controlled: a run's findings
+live in the markdown with their numbers, its figures under
+`tdvp_lyapunov/figures/`, and the h5 only while re-analysis of it is likely.
+β = 0.1 has been the default since 2026-09-17 and the even sector since
+2026-09-24, so the β ≠ 0.1 h5 is retired. Not yet deleted — this section is
+the record that clears it to go.
 
-| action | size | files |
+The nine files total 16.2 GiB and regenerate in ~5 h. A re-run would be
+better than the original due to no seed noise, k = 2n, and swap-symmetry
+control.
+
+| retired | GiB | regen | what it established | recorded in |
+|---|---|---|---|---|
+| `L8_D4_beta1`, `L8_D4_beta1_dt025` | 0.45 | — | Route A = Route B, dt 0.05 = 0.025 | `figures/compare_dt_route.png`; Route A was deleted 2026-09-17, so this is unreproducible either way |
+| `L8_D8_beta1`, `L12_D4_beta1`, `L16_D4_beta1`, `L8_D12_beta1` | 6.05 | ~3 h | the first L and D scan, k = n | superseded twice — β = 0.1 at k = 2n, then the even sector. `figures/L*_beta1_{spectrum,convergence}.png` |
+| `L8_D8_beta1_k2n`, `L8_D8_beta0.01_k2n` | 7.71 | ~1.7 h | with `L8_D8_beta0.1_k2n` (kept): conditioning improves with temperature (s_min 0.096 → 0.21, pairing 0.048 → 0.009) and the flow saturates by β = 0.1 (λ_max 0.436 / 0.533 / 0.542) | **the β = 0.1 default.** README "Temperature scan"; `figures/compare_beta_*.png` |
+| `L16_D4_beta1_k2n` | 1.98 | 39 min | k = 2n over k = n (near-zero enrichment at k = n was an artefact of the half); measure in the GS basis, CLVs only in narrow bands (condition number 2e17 at 1374 against ~1e1 at 120); the temperature/time-shift split, 0.44/1.69 against 1.70/0.37 at q = 0 | README "Hydrodynamic modes"; `figures/L16_D4_beta1_k2n_*.png` |
+
+What a re-run would be needed for:
+
+- **The q-selectivity caveat** — a β = 1 feature; the diffusive-scaling test
+  it calls for is still open.
+- **The flagged dispersion result** — rests on all three retirees, and needs
+  an orthonormal estimator, so a re-run either way.
+- **The temperature/time-shift split** has never been redone at β = 0.1, nor
+  in the even sector.
+
+**Code pointing at retired files**, to repoint or drop in the same pass:
+`compare_runs.py`'s `dt_route` scan (the only executable reference),
+`compare_beta.py`'s default `--betas 1 0.1 0.01` (unrunnable afterwards; its
+figures stay), and the docstring examples in `plots.py`, `run_hlm.py`,
+`mode_dispersion.py`, `long_wavelength_modes.py`.
+
+### The rest of the run directory (2026-09-25)
+
+71.6 GiB, not the 20.0 GiB the old inventory claimed. Retiring β ≠ 0.1
+recovers 16.2; the larger target is D = 12.
+
+| file | GiB | status |
 |---|---|---|
-| keep (β = 0.1) | 3.87 GB | `L8_D8_beta0.1_k2n.h5`, `L16_D3_beta0.1_template1.h5` |
-| **delete** (β = 1) | 12.3 GB | `L8_D12_beta1`, `L8_D8_beta1_k2n`, `L16_D4_beta1_k2n`, `L8_D8_beta1`, `L12_D4_beta1`, `L16_D4_beta1`, `L8_D4_beta1_dt025`, `L8_D4_beta1` |
-| **delete** (β = 0.01) | 3.86 GB | `L8_D8_beta0.01_k2n.h5` |
-
-Recovers 16.2 GB. Note the temperature scan in `tdvp_lyapunov/README.md`
-and the `q0 = 1.4` result in its open questions both cite β = 1 and
-β = 0.01 numbers; those tables stay, but become unreproducible without a
-re-run once the files go.
+| `L8_D12_beta0.1_k2n` | 17.9 | superseded for every quoted number; this is the uncontrolled run that entered its first block at `a_odd` = 0.68 |
+| `L8_D12_beta0.1_k2n_sym` | 17.9 | **keep** — the only evidence for the odd-sector runaway (λ_max → 1.43), an open question in `SWAP_SYMMETRY.md` |
+| `L8_D12_beta0.1_even_sym` | 5.9 | the quoted D = 12 run |
+| the other eight β = 0.1 files | 13.7 | the L and D scan at k = 2n, the D = 4 and D = 8 even-sector runs, the template run |
 
 ## tdvp_lyapunov (2026-09-16)
 
