@@ -42,7 +42,7 @@ sys.path.insert(0, os.getcwd())
 
 from langevin.models import plus_state, random_product_state
 from langevin.integrator import (LangevinModel, run_trajectory, run_ensemble,
-                                 run_many, friction_matrix)
+                                 run_many, friction_matrix, SCHEMES, SWITCH_RULES)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIGS = os.path.join(HERE, 'figures')
@@ -203,7 +203,8 @@ def tanh_fit(t, S, err):
 
 def demo_friction_scan(N=16, D=32, T=0.2, gammaTs=(0.02, 0.05, 0.08, 0.11, 0.15, 0.25),
                        n_traj=16, dt=0.04, t_f=40.0, scheme='heun', processes=21,
-                       noiseless=True, tag='', gamma=None, prefix='friction_scan'):
+                       noiseless=True, tag='', gamma=None, prefix='friction_scan',
+                       switch='all'):
     """
     Fig. 1 of arXiv:2111.06408 (there: N = 16, D = 128, T = 0.2, 70 trajectories,
     t = 60) at reduced D and trajectory count. By default T is fixed and
@@ -217,6 +218,8 @@ def demo_friction_scan(N=16, D=32, T=0.2, gammaTs=(0.02, 0.05, 0.08, 0.11, 0.15,
     Saves the raw ensembles to runs/{prefix}_N{N}_D{D}{tag}.npz, then replots
     from *every* runs/{prefix}_N{N}_D{D}*.npz, so extra gammaT values can be
     added later with a different tag (and noiseless=False).
+
+    switch: the two-site to single-site hand-over rule (integrator.grown).
     """
     n = len(gammaTs)
     dts = list(np.broadcast_to(dt, n))
@@ -224,11 +227,11 @@ def demo_friction_scan(N=16, D=32, T=0.2, gammaTs=(0.02, 0.05, 0.08, 0.11, 0.15,
     gammas = [gamma if gamma is not None else gT / T for gT in gammaTs]
     fixed = f'gamma={gamma}' if gamma is not None else f'T={T}'
     print(f"[{prefix}] N={N}, D={D}, {fixed}, gammaT in {tuple(gammaTs)}, dt={dts}, t_f={t_fs}, "
-          f"{n_traj} trajectories, scheme={scheme}, "
+          f"{n_traj} trajectories, scheme={scheme}, switch={switch}, "
           f"state={STATE['kind']}(seed {STATE['seed']}), noiseless={noiseless}", flush=True)
 
     def common(dt, t_f):
-        return dict(dt=dt, steps=int(round(t_f / dt)), scheme=scheme, grow_to=D,
+        return dict(dt=dt, steps=int(round(t_f / dt)), scheme=scheme, grow_to=D, switch=switch,
                     measure_every=max(1, int(round(0.2 / dt))))
     jobs = [dict(common(dts[0], t_fs[0]), gamma=0.0, gammaT=0.0, seed=0)] if noiseless else []
     for g, gT, d, tf in zip(gammas, gammaTs, dts, t_fs):
@@ -254,6 +257,7 @@ def demo_friction_scan(N=16, D=32, T=0.2, gammaTs=(0.02, 0.05, 0.08, 0.11, 0.15,
         out[f't_gT{gT}'] = rs[0]['t']
         i += n_traj
     out['scheme'] = scheme
+    out['switch'] = switch
     os.makedirs(RUNS, exist_ok=True)
     raw = os.path.join(RUNS, f'{prefix}_N{N}_D{D}{tag}.npz')
     np.savez(raw, **out)
@@ -405,8 +409,11 @@ if __name__ == '__main__':
                     default=[0.02, 0.05, 0.08, 0.11, 0.15, 0.25], help='friction_scan only')
     ap.add_argument('--no-noiseless', action='store_true', help='friction_scan only')
     ap.add_argument('--tag', default='', help='friction_scan only: suffix of the raw npz')
-    ap.add_argument('--scheme', choices=('paper', 'euler', 'heun'), default='heun',
+    ap.add_argument('--scheme', choices=SCHEMES, default='heun',
                     help='friction_scan only: integration scheme (see integrator.py)')
+    ap.add_argument('--switch', choices=SWITCH_RULES, default='all',
+                    help='friction_scan only: two-site to single-site hand-over '
+                         '(any = the rule of the reference code; see integrator.py)')
     args = ap.parse_args()
     STATE.update(kind=args.state, seed=args.state_seed)
     demos = dict(saturation=demo_saturation, noise=demo_noise,
@@ -416,7 +423,8 @@ if __name__ == '__main__':
                      n_traj=args.traj, t_f=args.tf if len(args.tf) > 1 else args.tf[0],
                      dt=args.dt if len(args.dt) > 1 else args.dt[0],
                      processes=args.processes, gammaTs=args.gammaTs,
-                     noiseless=not args.no_noiseless, tag=args.tag, scheme=args.scheme),
+                     noiseless=not args.no_noiseless, tag=args.tag, scheme=args.scheme,
+                     switch=args.switch),
                  friction_scan_compare_D=lambda: plot_D_comparison(prefix=args.prefix, N=args.N),
                  friction_scan_plot=lambda: plot_friction_scan(
                      N=args.N, D=args.D, T=args.T, gamma=args.gamma, prefix=args.prefix))

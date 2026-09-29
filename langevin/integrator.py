@@ -26,9 +26,21 @@ Schemes (how c is chosen for the step):
            (c0 + c~)/2. With the exact flow along X_F at frozen coefficients,
            this reproduces the Stratonovich second-order term, i.e. the
            two-pass fix of the notes.
+  'paper_exact'
+           'paper' plus the reference code's last-site typo
+           (update_H_MPO_langevin.m adds (etak - 1i*friction) * Y on the last
+           site), so the generator has an anti-Hermitian part -i f Y_N, and
+           every local exponential done with the reference Krylov routine
+           (matlab_lanczos.py), which, unlike qtensor's, applies a
+           non-Hermitian generator correctly.
 
-At gamma = 0 the coefficients do not depend on the state (c = dW/dt), all three
+At gamma = 0 the coefficients do not depend on the state (c = dW/dt), all
 schemes coincide and no brackets are computed.
+
+Growth: while bonds are short, steps are two-site TDVP. switch='all' hands
+over to single-site once every bond is at min(D, full); switch='any' once the
+largest bond reaches D, as tdvp_langevin_finite_2site.m's Dmaxout does, which
+leaves shorter bonds frozen where they were.
 """
 
 import copy
@@ -42,13 +54,27 @@ import qtensor.simulation.updatemethod as methods
 
 from langevin.models import ising_mpo, ising_local_terms, with_onsite_fields, PAPER_PARAMS
 from langevin.brackets import Frame, local_brackets
+from langevin.matlab_lanczos import matlab_method, matlab_two_site_expm
 
-SCHEMES = ('paper', 'euler', 'heun')
+SCHEMES = ('paper', 'euler', 'heun', 'paper_exact')
+SWITCH_RULES = ('all', 'any')
 
 
-def default_method():
+def default_method(scheme=None):
+    if scheme == 'paper_exact':
+        return matlab_method()
     # epsilon well below the qtensor default 1e-5: see lyapunov stepper.py
     return methods.lanczos_method(epsilon=1e-10, max_iters=16)
+
+
+def grown(psi, grow_to, switch='all'):
+    """Whether growth is over and single-site TDVP takes over (see module doc)."""
+    if switch == 'all':
+        return tdvp2.bonds_saturated(psi, grow_to)
+    sites = sorted(psi.sites)
+    N = len(sites)
+    largest_full = 2 ** (N // 2)
+    return max(psi[n].shape[2] for n in sites[:-1]) >= min(grow_to, largest_full)
 
 
 def friction_matrix(K, gamma):
@@ -65,8 +91,14 @@ def coefficients(A, K, dW, dt, gamma, scheme):
     if gamma == 0:
         return dW / dt
     S = friction_matrix(K, gamma)
-    if scheme == 'paper':
-        return dW / dt + gamma * S @ (A - K @ dW)
+    if scheme in ('paper', 'paper_exact'):
+        friction = gamma * S @ (A - K @ dW)
+        c = dW / dt + friction
+        if scheme == 'paper_exact':
+            # last site's Y: (etak(end-1) - 1i*friction(end-1)) in the reference
+            c = c.astype(complex)
+            c[-2] = dW[-2] / dt - 1j * friction[-2]
+        return c
     return S @ (gamma * A + dW / dt)
 
 
@@ -87,24 +119,28 @@ class LangevinModel:
 
 
 def langevin_step(psi, model, dt, gamma, gammaT, rng, scheme='heun',
-                  method=None, at_start=None, grow_to=None):
+                  method=None, at_start=None, grow_to=None, switch='all'):
     """
     One Langevin step. Mutates and returns psi (right-canonical, as tdvp_step
     leaves it), plus a dict with the noise and coefficients used.
 
     at_start : optional (A, K) already computed at psi, to avoid recomputing
                them when the caller also measures there.
-    grow_to  : target bond dimension. While any bond of psi is below
-               min(grow_to, full), the step is two-site TDVP truncated to
-               grow_to (twositeTDVP.tdvp2_step); after that, single-site
-               tdvp_step. None: always single-site (psi must already carry
-               its bond dimension).
+    grow_to  : target bond dimension. Until growth is over (see `grown`), the
+               step is two-site TDVP truncated to grow_to
+               (twositeTDVP.tdvp2_step); after that, single-site tdvp_step.
+               None: always single-site (psi must already carry its bond
+               dimension).
+    switch   : 'all' or 'any', the hand-over rule (module doc).
     """
     assert scheme in SCHEMES, scheme
-    method = method or default_method()
-    if grow_to is not None and not tdvp2.bonds_saturated(psi, grow_to):
+    assert switch in SWITCH_RULES, switch
+    method = method or default_method(scheme)
+    if grow_to is not None and not grown(psi, grow_to, switch):
+        expm = matlab_two_site_expm if scheme == 'paper_exact' else tdvp2.krylov_expm
+
         def evolve(state, G):
-            return tdvp2.tdvp2_step(state, G, dt, grow_to, method)
+            return tdvp2.tdvp2_step(state, G, dt, grow_to, method, expm=expm)
     else:
         def evolve(state, G):
             return sim.tdvp_step(state, G, dt, method)
@@ -138,9 +174,9 @@ def mid_bond_entropy(frame):
 
 def run_trajectory(psi0, model, dt, steps, gamma=0.0, gammaT=0.0, seed=0,
                    scheme='heun', method=None, measure_every=1, verbose=False,
-                   grow_to=None):
+                   grow_to=None, switch='all'):
     """
-    One trajectory. grow_to: see langevin_step -- pass the target bond
+    One trajectory. grow_to, switch: see langevin_step -- pass the target bond
     dimension with an unpadded (D = 1) product state, as the reference code does.
     Returns a dict of arrays over the measured times:
       t, energy, entropy (n_times, N-1 bonds; natural log), sigma (n_times, N, 3),
@@ -148,7 +184,7 @@ def run_trajectory(psi0, model, dt, steps, gamma=0.0, gammaT=0.0, seed=0,
     psi0 is not mutated.
     """
     rng = np.random.default_rng(seed)
-    method = method or default_method()
+    method = method or default_method(scheme)
     psi = copy.deepcopy(psi0)
     N = model.N
     out = {k: [] for k in ('t', 'energy', 'entropy', 'sigma')}
@@ -169,16 +205,16 @@ def run_trajectory(psi0, model, dt, steps, gamma=0.0, gammaT=0.0, seed=0,
         # continue from the frame's own right-canonical state, so the
         # brackets and the step start from the same canonicalization pass
         psi = frame.state()
-        if grow_to is not None and t_switch is None and tdvp2.bonds_saturated(psi, grow_to):
+        if grow_to is not None and t_switch is None and grown(psi, grow_to, switch):
             t_switch = step * dt
         psi, _ = langevin_step(psi, model, dt, gamma, gammaT, rng, scheme, method,
-                               at_start=(A, K), grow_to=grow_to)
+                               at_start=(A, K), grow_to=grow_to, switch=switch)
     res = {k: np.array(v) for k, v in out.items()}
     # time at which two-site growth handed over to single-site TDVP
     res['t_switch'] = t_switch
     res['S_mid'] = res['entropy'][:, N // 2 - 1]
     res.update(dict(dt=dt, steps=steps, gamma=gamma, gammaT=gammaT, seed=seed,
-                    scheme=scheme, N=N, D=grow_to, **model.params))
+                    scheme=scheme, switch=switch, N=N, D=grow_to, **model.params))
     res['final_state'] = psi
     return res
 

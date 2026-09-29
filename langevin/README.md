@@ -12,10 +12,12 @@ I would like to perform the same tasks with my own library while fixing the subt
 |---|---|
 | `models.py` | the paper's H (`J=-1, hx=-1.05, hz=0.5`) as a complex128 MPO; `with_onsite_fields(H, c)` adds `sum c_m F_m` into the on-site slot (no bond-dimension growth); `random_product_state` (**default initial state**: seeded random spin directions via `states.rand_product`), `plus_state`; dense helpers for tests |
 | `brackets.py` | `A_m = {H, F_m}`, `K_mn = {F_m, F_n}` two ways: the general single-site-TDVP projector route (`poisson_brackets`), and the exact local fast path (`local_brackets`) |
-| `integrator.py` | `langevin_step` (one step, three schemes), `run_trajectory`, `run_ensemble` (process-parallel over seeds), `run_many` (one pool over a whole parameter scan) |
+| `integrator.py` | `langevin_step` (one step, four schemes), `run_trajectory`, `run_ensemble` (process-parallel over seeds), `run_many` (one pool over a whole parameter scan) |
+| `matlab_lanczos.py` | line-for-line port of the reference `lanczos_exp.m`, as a qtensor `TDVPMethod` and a two-site drop-in; used by `paper_exact` |
 | `validate_brackets.py` | checks of the brackets against dense linear algebra and against `tdvp_step` itself |
-| `run_demos.py` | the simple-case behaviour runs, and `friction_scan` (the paper's Fig. 1); writes `figures/*.png`, `runs/*.npz`. `--state random` (default) or `plus`, `--state-seed` |
-| `../qtensor/simulation/twositeTDVP.py` | **new** two-site TDVP step (`tdvp2_step`), same conventions as `finiteTDVP.tdvp_step` |
+| `validate_paper_exact.py` | checks of the reference Krylov port and of the `paper_exact` scheme against dense evolution |
+| `run_demos.py` | the simple-case behaviour runs, and `friction_scan` (the paper's Fig. 1); writes `figures/*.png`, `runs/*.npz`. `--state random` (default) or `plus`, `--state-seed`, `--scheme`, `--switch all\|any` |
+| `../qtensor/simulation/twositeTDVP.py` | **new** two-site TDVP step (`tdvp2_step`), same conventions as `finiteTDVP.tdvp_step`; `expm=` selects the two-site Krylov exponential |
 
 Nothing in the existing `qtensor` files was changed. `finiteTDVP.tdvp_step` was already the
 workhorse with `tdvp` a wrapper around it (commit 383412d), so the Langevin step simply calls it
@@ -47,9 +49,16 @@ Schemes (`langevin_step(..., scheme=)`):
   `c~` at `psi~` with the **same** `dW`, then step from `psi` with `(c0 + c~)/2`. With the exact
   flow along `X_F` at frozen coefficients, this supplies the missing `(1/2)(dc . X) dW^2` term, so
   it is Stratonovich-consistent to the order that matters. It costs 2x `euler`.
+- `paper_exact`: `paper` plus the reference code's last-site typo (issue 2 below), so the
+  generator gains an anti-Hermitian term `-i f Y_N`, and with every local exponential done by the
+  reference Krylov routine (`matlab_lanczos.py`; see "Krylov routines" below for why that matters).
 
-At `gamma = 0` the coefficients are state-independent (`c = dW/dt`), so all three schemes are
+At `gamma = 0` the coefficients are state-independent (`c = dW/dt`), so all schemes are
 identical and no brackets are computed.
+
+Growth hand-over (`run_trajectory(..., switch=)`): `all` (default) switches to single-site TDVP once
+every bond is at `min(D, full)`; `any` switches once the largest bond reaches `D`, as the reference
+`tdvp_langevin_finite_2site.m` does through `Dmaxout`, leaving shorter bonds frozen where they were.
 
 ## Finding: A and K are exact Heisenberg quantities
 
@@ -85,13 +94,41 @@ convention left.
    reproduces it so it can be compared.
 2. **A sign typo at the last site:** `update_H_MPO_langevin.m` adds `(etak(end-1) - 1i*friction(end-1))*Y`
    where every other site has `+ friction`. For `gamma != 0` the generator is then non-Hermitian
-   on the last site. This is not reproduced here; the `paper` scheme uses the intended real
-   coefficient.
+   on the last site: `exp(-i dt (... - i f Y_N))` contains `exp(-f dt Y_N)`, an imaginary-time
+   push on the edge spin at rate `f ~ gamma`, followed by renormalization. The `paper` scheme
+   uses the intended real coefficient; `paper_exact` reproduces the typo.
 3. **The Ito/Stratonovich mix of the notes.** Coefficients are frozen at the start of the step
    while the vector fields are exponentiated. This is `euler` here; the fix is `heun`.
-4. Minor: `lanczos_exp.m` is single-pass three-term Lanczos with a fixed m = 20, which is the
-   same failure mode as the qtensor Lanczos bug fixed on 2026-09-16 whenever a local space has
-   dimension ≤ 20.
+4. Minor: `lanczos_exp.m` is three-term Lanczos with no reorthogonalization and a fixed
+   `m = min(20, dim)`. Unlike qtensor's pre-2026-09-16 Lanczos it stops at `m = dim`, so it does
+   not produce the garbage vector; see "Krylov routines" below.
+5. The reference driver `Finitechain_Ising_Langevin.m` prepares its initial state by DMRG on
+   `H(J=0, hx=-1)`, i.e. `|+>^N` (E = -16.8 at N = 16 in the code's sign convention), and switches
+   to single-site TDVP when the *largest* bond reaches D (`switch='any'` here). Its defaults
+   (N = 30, D = 250, dt = 0.02, noise only) are not the Fig. 1 settings, so the Fig. 1 script
+   itself is not in the repository.
+
+### Krylov routines: reference vs qtensor
+
+The four routines differ as follows (`validate_paper_exact.py`, test 1 and 2):
+
+| | reference `lanczos_exp.m` | qtensor `updatemethod.lanczos_*` | `twositeTDVP.krylov_expm` |
+|---|---|---|---|
+| orthogonalization | three-term recurrence only | full Gram–Schmidt, two passes | full, two passes |
+| Krylov size | `min(20, dim)` fixed | `min(16, dim)`, stop at norm < 1e-10 | `min(20, dim)`, stop at 1e-12 |
+| diagonal | `alpha = conj(<v\|H v>)` | `<v\|H v>` | real part only |
+| projected matrix | tridiagonal, `beta` both sides | upper triangle, lower filled as its conjugate | `(T + T^dag)/2` |
+| non-Hermitian `H` | **correct** to O((dt\|H\|)^m / m!) | wrong at first order in dt | anti-Hermitian part dropped |
+
+For Hermitian generators all agree to 1e-16 per local update. For a non-Hermitian one the
+reference routine is, perhaps surprisingly, right: its recurrence defines each vector through
+`H v_q = beta_q v_{q+1} + alpha_q v_q + beta_{q-1} v_{q-1}`, so `H V = V T + residual` holds
+exactly whatever `alpha` is, and the conjugated `alpha` only makes `V` non-orthogonal. qtensor's
+routines assume Hermiticity and get it wrong by 1e-2 per update (dt = 0.02), so the typo must be
+run through the port. The one inexactness of the port is on local spaces of dimension ≤ 20 with
+a non-Hermitian generator, where `m = dim` and the non-orthogonal basis leaves an
+O((dt |H_eff|)^dim / dim!) error. It is 1.7e-9 in infidelity after 25 steps at N = 5, and it is
+in the reference runs too.
 
 A sign slip in `ito_issues.tex` (not edited): with the notes' own convention
 (`{A, B}` = rate of change of `B` along `X_A`), the energy equation starts
@@ -316,6 +353,47 @@ D-ceiling whatever γT is. If that holds, the paper's transition needs either mu
 (fewer degrees of freedom) or an effective temperature that scales like `T / n_dof`.
 
 A cheap test: ⟨E⟩(T) at small D (D = 1, 2, 4; N = 8), against `n_dof T / 2`.
+
+## Reproducing the reference code: `paper_exact` at the Fig. 1 point (2026-09-29)
+
+The fixed-T argument: if the equation obeys fluctuation–dissipation, its stationary measure is
+`exp(-<H>/T)`, which does not depend on γ, so a transition in γT at fixed T must be kinetic or
+come from something that breaks it. Mechanism, seen in the D = 64 run above: averaged over
+the noise, the isotropic white noise is a depolarizing channel (it relaxes each field term at
+rate 8γT and each ZZ term at 16γT, at any D), while friction removes energy at `γ A^T S A` with
+`A = d<F>/dt`. From a product state A is large and friction wins (E: +2.05 → −8.6 by t = 1);
+as entanglement shrinks the local Bloch vectors, A → 0, friction dies, and E returns to ≈ 0.
+The typo was the one remaining reference-code difference that grows with γ, vanishes at γ = 0
+and is non-unitary, so it was tested directly.
+
+N = 16, D = 32, T = 0.2, γ = 0.9, γT = 0.18, dt = 0.04, 16 trajectories, same seeds as the
+`paper` run. Ensemble means (`runs/fig1_exact*_N16_D32.npz`,
+`figures/fig1_exact_comparison_N16_D32.png`):
+
+| t | 1 | 2 | 5 | 8 | 11 | 14 | 17 | 20 |
+|---|---|---|---|---|---|---|---|---|
+| S, `paper`, random state | 0.31 | 0.53 | 1.30 | 2.11 | 2.68 | 3.04 | 3.20 | 3.28 |
+| S, `paper_exact`, random state | 0.31 | 0.53 | 1.30 | 2.12 | 2.66 | 2.99 | 3.14 | 3.20 |
+| S, `paper_exact`, `\|+>`, `switch=any` | 0.43 | 0.69 | 1.49 | 2.21 | 2.70 | 3.00 | 3.14 | 3.21 |
+| E, `paper`, random state | −8.63 | −8.55 | −5.06 | −2.14 | −1.03 | −0.38 | −0.22 | −0.13 |
+| E, `paper_exact`, random state | −8.29 | −8.40 | −4.81 | −2.06 | −1.21 | −0.82 | −0.62 | −0.53 |
+| E, `paper_exact`, `\|+>`, `switch=any` | −11.17 | −8.44 | −4.21 | −1.89 | −1.08 | −0.83 | −0.62 | −0.44 |
+
+(S(20) across trajectories: 3.25–3.31 `paper`, 3.12–3.24 `paper_exact`, 3.17–3.26 `|+>`.)
+
+- **The typo does not produce a plateau.** It lowers S(20) by 0.08 and holds E slightly lower
+  (−0.53 against −0.13), consistent with a weak non-unitary pull on one edge spin, but
+  S is still rising towards the D = 32 ceiling at t = 20.
+- **The initial state is forgotten by t ≈ 5.** From `|+>` (E = −16.8) with the reference
+  hand-over rule, the curve joins the random-state one; E passes −11 at t = 1 and then follows
+  the same reheating.
+- **The noiseless `|+>` run stays near S ≈ 2.3** at t = 20 (fitted S0 = 2.19, still rising 3%),
+  below the D ceiling, because its energy is conserved at −16.8. So from the reference
+  initial state the bath *raises* the late-time entanglement (to 3.2), the opposite of Fig. 1's
+  trend. Not separated here: how much of the 2.3 is the energy and how much the bonds frozen by
+  `switch=any`.
+- Cost: the reference Krylov routine is cheaper than qtensor's two-pass one: 234 s and 296 s
+  for these runs, against 12 min for the `paper` run.
 
 ## Running
 

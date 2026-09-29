@@ -95,7 +95,7 @@ def split_two_site(T, max_bond_dim, cutoff):
 
 def tdvp2_step(state, operator, dt, max_bond_dim,
                method=methods.lanczos_method(epsilon=1e-10, max_iters=16),
-               cutoff=1e-10, krylov_iters=20):
+               cutoff=1e-10, krylov_iters=20, expm=krylov_expm):
     """
     One two-site TDVP step (right sweep, left sweep, dt/2 each), truncating
     every bond to max_bond_dim. Same contract as finiteTDVP.tdvp_step: the
@@ -105,7 +105,8 @@ def tdvp2_step(state, operator, dt, max_bond_dim,
     rebuilt anyway); the second return value is None to keep the signature.
 
     `method` supplies the single-site backward updates of the centre tensor
-    between two-site updates.
+    between two-site updates. `expm(matvec, v, dt, krylov_iters)` does the
+    two-site forward updates; the default assumes a Hermitian operator.
     """
     sites = sorted(state.sites)
     state.right_orthogonal()
@@ -116,9 +117,9 @@ def tdvp2_step(state, operator, dt, max_bond_dim,
     for k in range(len(sites) - 1):
         n, m = sites[k], sites[k + 1]
         T = np.einsum('slr,trq->stlq', state[n], state[m])
-        T = krylov_expm(lambda x: apply_Heff_two_site(x, operator[n], operator[m],
-                                                      L_con[n - 1], R_con[m + 1]),
-                        T, dt / 2, krylov_iters)
+        T = expm(lambda x: apply_Heff_two_site(x, operator[n], operator[m],
+                                               L_con[n - 1], R_con[m + 1]),
+                 T, dt / 2, krylov_iters)
         U, s, V = split_two_site(T, max_bond_dim, cutoff)
         state[n] = U
         L_con[n] = ops.contract_left(L_con[n - 1], U, operator[n])
@@ -133,9 +134,9 @@ def tdvp2_step(state, operator, dt, max_bond_dim,
     for k in range(len(sites) - 1, 0, -1):
         n, m = sites[k - 1], sites[k]
         T = np.einsum('slr,trq->stlq', state[n], state[m])
-        T = krylov_expm(lambda x: apply_Heff_two_site(x, operator[n], operator[m],
-                                                      L_con[n - 1], R_con[m + 1]),
-                        T, dt / 2, krylov_iters)
+        T = expm(lambda x: apply_Heff_two_site(x, operator[n], operator[m],
+                                               L_con[n - 1], R_con[m + 1]),
+                 T, dt / 2, krylov_iters)
         U, s, V = split_two_site(T, max_bond_dim, cutoff)
         state[m] = V
         R_con[m] = ops.contract_right(R_con[m + 1], V, operator[m])

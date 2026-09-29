@@ -65,7 +65,8 @@ def with_onsite_fields(H, coeffs):
     """
     H + sum_{j,a} coeffs[j, a] * PAULIS[a]_j, as a new mpo.
 
-    coeffs : (N, 3) real array, rows in sorted-site order.
+    coeffs : (N, 3) array, rows in sorted-site order. Real, so the result is
+             Hermitian; complex only for the 'paper_exact' typo.
 
     The fields go into the on-site slot [0, -1] of each tensor, so the bond
     dimension does not grow -- this is what makes the per-step Langevin
@@ -76,7 +77,9 @@ def with_onsite_fields(H, coeffs):
     D = H.D
     assert np.allclose(H.l, np.eye(D)[0]) and np.allclose(H.r, np.eye(D)[-1]), \
         "with_onsite_fields needs l = e_0, r = e_{D-1}"
-    coeffs = np.asarray(coeffs, dtype=float).reshape(len(sites), 3)
+    coeffs = np.asarray(coeffs)
+    coeffs = coeffs.astype(complex if np.iscomplexobj(coeffs) else float)
+    coeffs = coeffs.reshape(len(sites), 3)
     Ws = []
     for i, site in enumerate(sites):
         W = np.array(H[site], dtype=complex)   # copy; uniform_MPO shares W
