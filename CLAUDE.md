@@ -187,6 +187,26 @@ exactly, so the tangent-space projection has a real spectrum and **all Lyapunov 
 point are exactly zero**. Nonzero exponents require linearizing along a trajectory where `Hψ ≠ 0`, where
 the tangent-projector-derivative term survives — which is why the project split.
 
+## Research subproject (`langevin/`)
+
+Also a *consumer* of `qtensor`, same rules as `lyapunov/`. Single-site TDVP of the noisy, rearranged
+TDVP Langevin equation of arXiv:2111.06408 (reference MATLAB: github.com/AndrewHallam/Langevin), with
+the user's notes on the Ito/Stratonovich inconsistency in `langevin/ito_issues.tex`. Each step is
+`finiteTDVP.tdvp_step` under the MPO `H + sum_m c_m F_m` (real `c`, so Hermitian; `models.with_onsite_fields`),
+with `c = S(gamma A + dW/dt)`. Schemes `paper` / `euler` / `heun` differ only in how `c` is chosen
+(`heun` = Stratonovich predictor-corrector). `langevin/README.md` has the results and the
+reference-code issues found.
+
+Key result worth not re-deriving: for single-site bath operators, `P F_j psi = F_j psi` exactly
+(a one-site unitary keeps the bond dimension), so `A_m = i<[H, F_m]>` and `K_mn = i<[F_m, F_n]>`
+are exact Heisenberg expectation values at any D, and `K` is exactly block diagonal. `brackets.py`
+keeps the general projector route as the cross-check (`validate_brackets.py`).
+
+Runs start from an *unpadded* product state and grow bond dimension with the new
+`qtensor/simulation/twositeTDVP.tdvp2_step` until bonds reach `min(D, full)`, then switch to
+single-site. Starting single-site TDVP from a zero-padded product state is gauge dependent:
+measured mid-bond S(t=0.2) correct at D = 8, 16, 24, 48 but 7% low at D = 32 (L = 12).
+
 ## Lanczos fix (2026-09-16)
 
 `updatemethod.lanczos_loop`/`lanczos_loop_bond` used single-pass Gram–Schmidt, which lost orthogonality

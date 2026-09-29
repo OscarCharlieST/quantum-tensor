@@ -1,0 +1,137 @@
+
+\begin{document}
+
+\maketitle
+
+\section{TDVP Langevin Equation}
+
+    The TDVP Langevin equation in \cite{Azad2023} comes from explicitly integrating out bath degrees of freedom, exchanging them for stochastic terms in the time-evolution equation. A qualitative description is given here; details on the derivation can be found in the paper.
+           
+    A many-body system is described by a vectorised set of parameters $X_i$ corresponding to the state $\ket{\psi(X_i)}$. It evolves under a Hamiltonian $\hat{H}$. The system is coupled to a thermal bath modelled in the following way. The system has a set of coupling operators $\{\hat F_1, \hat F_2, \cdots \}$. Each $\hat F_n$ is supported on a single site, and is paired with an independent harmonic oscillator with ladder operators $\hat{a}_n, \hat{a}_n^\dagger$. It is held in thermal equilibrium at a temperature $T$. The system is coupled to the bath by an interaction $\hat{H}_{int}^{(n)}=\gamma \hat F_n(\hat a_n +\hat a_n^\dagger)$. The coupling strength $\gamma$ and the temperature $T$ are the same for all bath-system couplings. The different species of coupling operators are the same at each site in the system, so $n$ can be taken as a composite index over both sites and species. 
+
+    Projecting the full system-bath dynamics onto the manifold, then integrating out bath degrees of freedom, gives the TDVP Langevin equation
+    \begin{equation}\label{eq:tdvp-langevin}
+       \bra{\partial_i\psi} \partial_j\psi\rangle \dot x_j = -i\bra{\partial_i\psi}\hat H\ket \psi
+       -i\sum_n\bra{\partial_i\psi}\hat F_n\ket \psi \eta_n(t)
+       -i\gamma \sum_n \bra{\partial_i\psi}\hat F_n\ket \psi \frac{d(\bra\psi\hat F_n\ket\psi)}{dt}
+    \end{equation}
+    where $\eta_n(t)$ is white noise with $\langle \eta_m(t)\eta_n(t')\rangle = 2\gamma T\delta_{mn}\delta(t-t')$. This is similar to the TDVP, with two new terms. The first looks much like a Hamiltonian term with noisy strength; we refer to $\gamma T$ as ``noise strength''. The second term is more complicated, relying recursively on the dynamics of $\langle \hat F_n \rangle$ and breaking the energy conservation of TDVP; it is thus thought of as a friction type term, and the parameter $\gamma$ is referred to as friction strength or simply ``friction".
+
+\subsection{Geometric language}
+
+        MPS states form a Kahler manifolds, for which we use the following conventions
+        
+        \begin{itemize}
+            \item Manifold ${M}$ contains states; points $\psi\in {M}$ correspond to states $\ket\psi$ \\
+            \item Symplectic non-degenerate 2-form $\omega$ closed (and locally exact) $d\omega=0$.\\
+            \item Expectations are scalar functions on the manifold; $\langle \hat A \rangle: M\to \mathbb{R}$ (when $\hat A$ is Hermitian), and $\nabla\langle \hat A \rangle \in TM$, a vector field. \\
+            \item Hamiltonian vector fields $X_{\hat A} : \omega(X_{\hat A}, \cdot)=\nabla\langle \hat A \rangle$\\
+            \item Poisson brackets give the rate of change of a quantity with flow along Hamiltonian vector fields: $ \{ A, B \}  = \nabla\langle B \rangle \cdot X_A = \omega(X_B, X_A) $
+        \end{itemize}
+
+        We thus rewrite \ref{eq:tdvp-langevin} in this language, in an orthonormal tangent space basis:
+
+        \begin{equation}\label{eq:geometric_tdvpl}
+            \dot{\vec{x}} = X_H +\sum_n X_{F_n}\eta_n + \gamma \sum_n X_{F_n} (\dot{\vec x}\cdot \nabla\langle F_n\rangle)
+        \end{equation}
+
+    \subsection{Solving for x}
+
+        Moving to implicit summation over bath operators, and pulling factors of $x$ to the same side,
+
+        \begin{equation*}
+            (\mathbb{I} - \gamma X_{F_n}\nabla\langle F_n\rangle)\dot x = X_H + X_{F_n} \eta_n
+        \end{equation*}
+
+        Define the tangent space matrix $K: T_\psi\to T_\psi$ as $K:=\sum_n X_{F_n} \nabla\langle F_n\rangle$
+
+    \subsection{Rearrange the bath operator equation}
+        Since $d/dt\langle F_n\rangle$ appears on the right of \ref{eq:tdvp-langevin}, we can rearrange for it:
+        \begin{align*}
+        \frac{d}{dt}\langle F_m\rangle  &= \{H, F_m\} + \eta_n\{ F_n, F_m\}+ \gamma \frac{d}{dt}\langle F_n \rangle \{F_n, F_m\}\\
+        (1+ \gamma K)_{mn} \frac{d}{dt}\langle F_n\rangle &= A_m - K_{mn}\eta_n    
+        \end{align*}
+        
+        where $A_m:=\{H, F_m\}$ and $K_{mn}:=\{F_m,F_n\} $ (note the signs). For our model $K$ is $3\times 3$ block diagonal and the matrix on the left is invertible. Define $S:=(1+\gamma K)^{-1}$. This obeys  
+        \begin{equation}\label{eq:friction_poisson_relation}
+            (1+\gamma K)S = S(1+\gamma K) = 1 \; ;\; \gamma K S = \gamma SK = 1 - S
+        \end{equation}
+        and multiplying from the left
+        \begin{equation}\label{eq:bath_time_dep}
+            \frac{d}{dt}\langle F_m\rangle  = S_{mn} A_n - S_{mn}K_{np} \eta_p
+        \end{equation}
+        which can be plugged into \ref{eq:tdvp-langevin} to give
+        \begin{align}
+            \dot{\vec x} &= X_H + X_{F_m}\eta _m + \gamma X_{F_m}S_{mn}A_n - X_{F_m}(\gamma SK)_{mn}\eta_n \nonumber \\
+            &= X_H +\gamma X_{F_m}S_{mn}A_n + X_{F_m}S_{mn}\eta_n \label{eq:tdvpl-rearr}
+        \end{align}
+        where we have used \ref{eq:friction_poisson_relation}. 
+        
+        
+        
+    \subsection{Extensive variable couplings}
+    \subsubsection{Energy}
+
+        What is the stochastic behaviour of energy expectation? If temperature of the steady state is to be a helpful tool in diagnosing a transition, this would be a quantity of interest.
+
+        Since $\{H, H\}=0$, the energy equation only has terms related to noise/friction strength 
+
+        \begin{align}
+            \frac{d}{dt}\langle \hat H \rangle &= \sum_n\{H, F_n\}\eta_n + \gamma \sum_n\{H, F_n\}\frac{d}{dt}\langle F_n\rangle \nonumber \\
+            &= A_n\eta_n+ \gamma A_m S_{mn}A_n - \gamma A_mS_{mn}K_{np}\eta_p \nonumber \\
+            &= \gamma A_m S_{mn}A_n + A_mS_{mn}\eta_n
+        \end{align}
+
+    \subsubsection{Entropy}
+        The hamiltonian fields $X_{F_n}$ point along entropy contours, so instantaneous entropy growth is equal to that in the uncoupled system.
+
+        Thus there are two competing types of dynamics: the Hamiltonian, which changes entropy within energy shells; friction leading to deterministic drift in energy; noise leading to energy scrambling.
+
+    \subsection{Proposed mechanisms}
+
+        How might this all lead to a phase transition? The observations are that
+        
+        \begin{itemize}
+            \item The bare Hamiltonian grows entropy ballistically to saturation.
+
+            \item The entanglement ceiling depends on the initial starting state.
+
+            \item Friction alone slows but cannot stop entanglement growth to saturation.
+        \end{itemize}
+        
+        The fact that the noise scrambles energy, and we assume within each energy shell the Hamiltonian is basically ergodic, constrains the mechanisms. Some observations
+
+        \begin{itemize}
+            \item $K$ depends on expectation of local spins, and has a norm increasing with on-site purity. $S$ becomes transparent for the most entangled states.
+        \end{itemize}
+
+
+
+    \subsection{Fokker-Planck}
+        Converting \ref{eq:tdvpl-rearr} to an equation on the whole manifold, we need to convert from Stratonovic to Fokker-Plank
+
+        $$
+        \vec\mu = X_H + \gamma X_{F_m}S_{mn}A_n\; , \;
+        \vec\sigma_{n} = X_{F_m}S_{mn}
+        $$
+
+        \begin{align*}
+        \frac{\partial p}{\partial t} &= -\nabla\cdot (\vec \mu p)+\gamma T \nabla\cdot(\vec \sigma_n\nabla\cdot(\vec \sigma_n p)) \\
+        \end{align*}
+
+        Use identities of the type $\nabla \cdot X_A = \partial_i (J\omega_{ij}\partial_j\langle A \rangle)=0$ since $\omega$ is closed and skew-symmetric. Then we have $\nabla\cdot\vec\mu = \gamma X_{F_m}\cdot\nabla(S_{mn} A_n)$. Similarly, $\nabla\cdot\vec\sigma_n = X_{F_m}\cdot\nabla S_{mn}$. From \ref{eq:friction_poisson_relation} we know $dS = -\gamma dS\,K - \gamma S \, dK \; ; \; dS(1+\gamma K)S = dS = -\gamma S dKS$. Thus we need to work out 
+
+        $$
+        \nabla\cdot(\vec\sigma_n (X_{F_m}\cdot\nabla S_{mn}) = |(X_{F_p}\cdot \nabla S_{pn})|^2 + \vec\sigma_n\cdot\nabla(X_{F_m}\cdot\nabla S_{mn})
+        $$
+
+        \subsection{Ito issues}
+        The elephant in the room is that simulation results were obtained assuming the TDVP Langevin equation was Ito, at least in part.
+
+        The classic way to integrate an Ito equation numerically is basically the Euler method: in particular, noise coupling is calculated from the state at the start of each step and multiplied by the Weiner increment.
+
+        In the paper, the noise couplings are introduced to the generator which then acts on the state. This integration approach is Stratonovic consistent, as it implicitly includes higher-order $dt$ corrections. However, rearrangement of the TDVP via solving for $dF/dt$ implicitly uses only the state at the start of the calculation. Everywhere else the state essentially enters dynamically during exponentiation.
+
+        To deal with this problem we can either find a way to recalculate friction corrections dynamically, or we can use a recursive scheme to calculate and recalculate steps, updating the guess for the state after dt each time and more accurately evaluating the noise coupling. For stratonovic we should only need to do two passes for accuracy to $dt$.
+    
+\end{document}
