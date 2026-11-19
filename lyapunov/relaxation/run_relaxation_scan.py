@@ -31,7 +31,7 @@ import lyapunov.relaxation.response as resp
 
 # ------------------------------------------------------------------- config
 
-J, H_FIELD, G_FIELD = 1, 0.25, -0.525   # tilted Ising defaults (1702.08894)
+J, H_FIELD, G_FIELD = 0.25, 0.125, -0.2625   # 1702.08894 in Pauli units (see README)
 BETA = 0.1                              # inverse temperature of psi_uniform
 D = 8                                   # bond dimension, same for every L
 L_VALUES = [8, 12, 16]

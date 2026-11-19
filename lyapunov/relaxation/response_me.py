@@ -243,34 +243,37 @@ def build_hamiltonians(L=101,  J=0.25, h=0.125, g=-0.2625):
     H_asym = ops.thermofield_hamiltonian(H, asym=True)
     return H_sym, H_asym
 
-def get_state(H_sym, L=101, J=0.25, h=0.125, g=-0.2625, beta=0.1,  chi=32, 
-                   steps=100, noise=1e-14, seed=42,  
-                   save=False):
+def get_state(L=101, J=0.25, h=0.125, g=-0.2625, beta=0.1,  chi=32, 
+                   steps=100, noise=1e-14, seed=42):
 
     np.random.seed(seed)
     
     fname = state_filename(L=L, J=J, h=h, g=g, beta=beta, chi=chi,
-                           steps=steps, steps=steps, noise=noise, seed=seed)
-    
-    if os.path.exists(os.join(RUN_DIR, fname)):
-        state, _ = states.load_mps(os.join(RUN_DIR, fname))
+                           steps=steps, noise=noise, seed=seed)
+
+    path = os.path.join(RUN_DIR, fname)
+    if os.path.exists(path):
+        print("State already exists, no need to build. Loading...")
+        state, _ = states.load_mps(path, verbose=False)
         return state 
     else:
+        # Get Hamiltonian
+        H_sym, _ = build_hamiltonians(L, J, h, g)
+
         # Build initial state
         init_state= thf.inf_T_thermofield(L, chi, noise=noise)
         beta_state, _, _ = thf.finite_T_thermofield(beta,  H_sym, steps=steps,
                                                     initial_state=init_state,
                                                     plot=False)
-        if save:
-            params = dict(model="TFI", J=J, h=h, g=g,
-                            L=L, chi=chi, beta=beta,
-                            steps=steps, noise=noise, seed=seed)
-            beta_state.save(os.path.join(RUN_DIR, fname), params=params)
+        params = dict(model="TFI", J=J, h=h, g=g,
+                      L=L, chi=chi, beta=beta,
+                      steps=steps, noise=noise, seed=seed)
+        beta_state.save(path, params=params)
         return beta_state
 
 
 def state_filename(**params):
-    return f"TFI_J_{params['J']}_h_{params['h']}_g_{params['g']}_L_{params['L']}_D_{params['chi']}_beta_{params['beta']:g}_steps_{params['steps']}_seed_{params['seed']}_state.h5"
+    return f"TFI_J_{params['J']}_h_{params['h']}_g_{params['g']}_L_{params['L']}_D_{params['chi']}_beta_{params['beta']:g}_steps_{params['steps']}_noise_{params['noise']:g}_seed_{params['seed']}_state.h5"
 
 
 def run_response(L, chi, beta, n, J, h, g, 
@@ -290,10 +293,8 @@ def run_response(L, chi, beta, n, J, h, g,
     #                                            steps=steps, noise=noise,
     #                                            seed=seed, save=False)
     H_sym, H_asym = build_hamiltonians(L, J, h, g)
-    beta_state = get_state(H_sym, 
-                           L=101, J=0.25, h=0.125, g=-0.2625, beta=0.1, chi=32,
-                           steps=100, noise=1e-14, seed=42,
-                           save=False)
+    beta_state = get_state(L=L, J=J, h=h, g=g, beta=beta, chi=chi,
+                           steps=steps, noise=noise, seed=seed)
     print(f"Initial state build took {time.time() - t:.4f} seconds.")
 
     t = time.time()
@@ -399,7 +400,7 @@ def compare_response(param_list, compute_missing=False):
     pass
 
 def response_filename(**params):
-    return f"TFI_J_{params['J']}_h_{params['h']}_g_{params['g']}_L_{params['L']}_D_{params['chi']}_beta_{params['beta']:g}_seed_{params['seed']}_response_n_{params['n']}_m_{params['loops']}.h5"
+    return f"TFI_J_{params['J']}_h_{params['h']}_g_{params['g']}_L_{params['L']}_D_{params['chi']}_beta_{params['beta']:g}_noise_{params['noise']:g}_seed_{params['seed']}_response_n_{params['n']}_m_{params['loops']}.h5"
 
 def save_response(path, results, params):
     with h5py.File(path, "w") as f:
@@ -415,16 +416,15 @@ def load_response(path):
 
 ###
 
-run_params = {'L': 101, 'chi': 32, 'beta': 0.01, 'n': 1,
+run_params = {'L': 8, 'chi': 8, 'beta': 0.01, 'n': 1,
                 'J': 0.25, 'h': 0.125, 'g': -0.2625, 
                 'times': np.linspace(0, 100, 1000), 
-                'loops': 500, 'steps': 100, 'noise': 1e-14, 'seed': 42,
-                'save': True}
+                'loops': 100, 'steps': 100, 'noise': 1e-14, 'seed': 42}
 
 if __name__ == "__main__" :
     # Check run parameters don't already exist in run directory
     base = run_params
-    scan_params = [base | {"loops": l} for l in (50, 100, 200)]
+    scan_params = [base | {"loops": l} for l in (100, 200,)]
     compare_response(scan_params, compute_missing=True)
 
 
