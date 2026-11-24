@@ -899,6 +899,120 @@ aborted. It may need a finer step, so run `validate_cut_dt.py --L 8 --m 1 --k 8
 3. The L = 8 top-k scan, m ∈ {1, 4, 16, 64} at dt = 0.0125, with the output
    in `C:\Users\charl\lyapunov_runs`.
 
+## Energy rate vs bond dimension (2026-11-24): steps 0 and 1
+
+**Hypothesis under test.** The local-equilibrium energy rate on the
+manifold, `dE_0/dt = τ × (static current build-up rate)`, could converge in
+D even though each factor drifts, if τ comes from a Lyapunov heuristic and
+both factors feel the same projection. Step 0 is the exact anchor. Step 1 is
+the static factor against D. Steps 2–4 (the TDVP-consistent response, the
+Lyapunov measures, combining them) are not started; the runs needing the old
+h5 files are last.
+
+### Step 0: the formula, checked exactly (`energy_rate_ed.py`)
+
+For the physical-copy energy, with ρ ∝ exp(−Σ β_j h_j) near β = 0 and
+`A⁺ = A⊗1 + 1⊗A`:
+
+    dE_0/dt = −(τ/8) ∇²β Σ_k k² B_k,     B_k = ⟨h_k⁺ [H,h_0]⁺ H⁺⟩ = −4 C_k
+
+Here `C_k = ⟨ḣ_k ḣ_0⟩_∞`. For both copies' energy the prefactor is −τ/4.
+With τ ≡ τ_GK = ∫G/G(0) this is an identity, `c D = τ G(0)`, not an
+approximation.
+
+- Only nearest neighbours contribute: `C_0 = 1.1025`, `C_±1 = −0.55125`. So
+  `Σk²C_k = −2G(0)` and `Σk²B_k = 8G(0) = 16(gJ)² = 4.41`. Also
+  `c = J² + h² + g² = 1.338`. All exact to 1e-15.
+- The linear-response second derivative from `ρ = e^{−Σδβ h}` equals
+  `Σ δβ_k C_k` to 5e-11, which fixes both the sign and the 1/8.
+- The single ordering ⟨h X H⟩ is the *whole* second derivative only on the
+  thermofield double (TFD), because `X⁺ψ ↔ [X, M] = 0` there. Off the TFD the
+  other ordering contributes (step 1).
+- At β = 0.1 the exact bracket is `Σk²B = 4.293`.
+
+**Green–Kubo reference** (periodic, dynamical typicality, L = 10–18, t ≤ 25;
+L = 20 was stopped). `figures/energy_rate_green_kubo.png`.
+
+- G(t)/G(0) falls to 0.05 at t ≈ 5.8, then *rises* to ≈ 0.2 by t = 10, the
+  same at every L. This is real dynamics, plausibly a long-lived current
+  from proximity to the integrable h = 0 point.
+- D(t) shoulders at ≈ 1.05 (t ≈ 5–7) and is L-converged only to t ≈ 12, where
+  D ≈ 1.45 and τ_GK ≈ 3.5. After that it keeps rising: D(25) = 1.87 at L = 16
+  and 1.80 at L = 18.
+- **No plateau, so D ≳ 1.5 is a bound, not a value.** The relaxation strand's
+  `D_peak ≈ 0.45` is at least three times below this. That strand already
+  flagged its own number as a crossover bound, but the ED says the bias runs
+  *low*, not high as that README argued.
+
+### Step 1: the static bracket on the manifold (`energy_rate.py`, `run_energy_rate.py`)
+
+Same build as the even-sector runs: 240 imaginary-time steps, 160-step
+swap-symmetrized transient at dt = 0.05. Each point is the TFD plus 9
+trajectory points, t = 8–16. Four variants per k:
+
+- `B1`: exact, no projection.
+- `BPH`: P on the flow only.
+- `BPh`: P on the perturbation only.
+- `BP`: the literal ⟨h⁺PX⁺PH⁺⟩.
+
+Plus two exact *full* second derivatives, both equal to C_k on the TFD:
+
+- `Csym`: symmetric perturbation and energy.
+- `Cphys`: one-sided perturbation, physical energy. It depends only on the
+  physical reduced state.
+
+All checked against dense brute force with an explicit projector (1e-14), at
+full rank, and against ED on the TFD (1e-9):
+`validate_energy_rate.py`. Figures: `figures/energy_rate_bracket_L{8,12,16}.png`.
+
+| L | D | BP (literal) | B1 (exact, single ordering) | −4 Cphys (exact, full) | capture Hψ | capture h_0⁺ψ |
+|---|---|---|---|---|---|---|
+| 8 | 2 | +0.31 ± 0.54 | +0.68 ± 0.35 | +3.65 ± 0.80 | 0.57 | 0.35 |
+| 8 | 4 | +0.48 ± 0.46 | +1.26 ± 0.28 | +4.47 ± 0.88 | 0.73 | 0.46 |
+| 8 | 8 | +0.62 ± 0.22 | +1.76 ± 0.24 | +5.49 ± 0.63 | 0.79 | 0.51 |
+| 8 | 16 | +0.58 ± 0.19 | +1.47 ± 0.15 | +4.85 ± 0.41 | 0.88 | 0.54 |
+| 12 | 4 | +0.38 ± 0.79 | +1.22 ± 0.51 | +5.19 ± 0.86 | 0.68 | 0.48 |
+| 12 | 12 | +0.23 ± 0.40 | +1.27 ± 0.27 | +4.72 ± 0.49 | 0.76 | 0.52 |
+| 16 | 4 | +0.26 ± 0.61 | +1.43 ± 0.79 | +5.06 ± 1.31 | 0.65 | 0.53 |
+| 16 | 12 | +0.00 ± 0.24 | +1.34 ± 0.19 | +3.89 ± 0.36 | 0.75 | 0.57 |
+
+These are trajectory means ± standard error over 9 points; the exact β = 0
+value is 4.41 on every column's scale. The full table, including D = 3 and 6,
+is in the run logs `runs/energy_rate_L*.log`.
+
+1. **At the TFD nothing depends on D or on P.** Every variant gives 4.293 at
+   every D from 2 to 16 and every L, and both captures are 1.0000. The
+   near-rank-deficient TFD makes the padded tangent space generous (cf.
+   `response.static_variance`). So at t = 0 the projection does not touch the
+   inner products.
+2. **On the trajectory, the literal bracket is ~0.4, a tenth of exact, and
+   flat in D** within errors of 0.2–0.8, like λ_max. Two separate factors of
+   about 3 account for the drop:
+   - the single ordering off the TFD: Cphys ≈ 4.4 → B1 ≈ 1.4;
+   - the projectors: B1 → BP ≈ 0.4, with P on the perturbation (BPh) costing
+     more than P on the flow (BPH).
+3. **Cphys ≈ 4–5 ≈ exact**, so the trajectory points are still
+   infinite-temperature references physically. The symmetric construction is
+   what fails: Csym ≈ 2–3.
+4. **Single trajectory points carry imaginary parts up to ±50** in the
+   single-ordering brackets, alternating in sign between samples. The full
+   second derivatives (Csym, Cphys) are real to ~0.1.
+5. Capture of Hψ rises with D (0.57 → 0.88 at L = 8). Capture of the local
+   perturbation stays ≈ 0.5 at every D: a two-site operator on a full-rank
+   state is about half outside the single-site tangent space.
+6. `BP_one = BP` identically on swap-even states, since every other operator
+   in the bracket is swap-even.
+
+**What it means for the hypothesis.** Both the static factor and λ_max are flat
+in D over this range, so their product converges trivially; the question is
+its value. Matching D ≈ 1.5 needs `τ = 8cD/S`, which is ≈ 3.6 with the exact
+S = 4.41 (consistent with τ_GK). With the literal S ≈ 0.4 it needs τ ≈ 40,
+against 1/λ_max ≈ 1.9 and 1/⟨λ⁺⟩ ≈ 10. **But the literal bracket is not the
+TDVP second derivative off the TFD**: it lacks the second ordering and the
+curvature term K. Step 2 (seeding the tangent flow with the local-temperature
+template and fitting the t² coefficient of δE_0(t)) measures the consistent
+coefficient and should decide this before any Lyapunov heuristic is compared.
+
 ## Next
 
 0. **Delete the β ≠ 0.1 run data** (16.2 GiB). No longer blocked: the record
